@@ -5,6 +5,7 @@ using System.Security;
 using System.Text;
 using API.Logger;
 using Carbon.Profiler;
+using Facepunch;
 using Newtonsoft.Json;
 using Timer = Oxide.Plugins.Timer;
 
@@ -43,6 +44,7 @@ public static unsafe partial class MonoProfiler
 	public static Dictionary<IntPtr, string> MethodMap = new();
 	public static TimeSpan DataProcessingTime;
 	public static TimeSpan DurationTime;
+
 	public static TimeSpan CurrentDurationTime => (_durationTimer?.Elapsed).GetValueOrDefault();
 
 	private static Stopwatch _dataProcessTimer;
@@ -59,6 +61,8 @@ public static unsafe partial class MonoProfiler
 		NotInitialized = 4,
 		CorruptedState = 5,
 		UnknownError = 6,
+		Busy = 7,
+		NoOp = 8
 	}
 
 	/// <summary>
@@ -142,8 +146,7 @@ public static unsafe partial class MonoProfiler
 		}
 		public string ToCSV()
 		{
-			StringBuilder builder = PoolEx.GetStringBuilder();
-
+			var builder = Pool.Get<StringBuilder>();
 			builder.AppendLine("Assembly," +
 			                   "Total Time," +
 			                   "(%)," +
@@ -165,8 +168,7 @@ public static unsafe partial class MonoProfiler
 			}
 
 			string result = builder.ToString();
-
-			PoolEx.FreeStringBuilder(ref builder);
+			Pool.FreeUnmanaged(ref builder);
 			return result;
 		}
 		public string ToJson(bool indented)
@@ -254,7 +256,7 @@ public static unsafe partial class MonoProfiler
 		}
 		public string ToCSV()
 		{
-			StringBuilder builder = PoolEx.GetStringBuilder();
+			StringBuilder builder = Pool.Get<StringBuilder>();
 
 			builder.AppendLine("Assembly," +
 			                   "Method," +
@@ -285,8 +287,7 @@ public static unsafe partial class MonoProfiler
 			}
 
 			string result = builder.ToString();
-
-			PoolEx.FreeStringBuilder(ref builder);
+			Pool.FreeUnmanaged(ref builder);
 			return result;
 		}
 		public string ToJson(bool indented)
@@ -357,8 +358,7 @@ public static unsafe partial class MonoProfiler
 		}
 		public string ToCSV()
 		{
-			StringBuilder builder = PoolEx.GetStringBuilder();
-
+			StringBuilder builder = Pool.Get<StringBuilder>();
 			builder.AppendLine("Assembly," +
 			                   "Class," +
 			                   "Allocations," +
@@ -380,8 +380,7 @@ public static unsafe partial class MonoProfiler
 			}
 
 			string result = builder.ToString();
-
-			PoolEx.FreeStringBuilder(ref builder);
+			Pool.FreeUnmanaged(ref builder);
 			return result;
 		}
 		public string ToJson(bool indented)
@@ -440,7 +439,7 @@ public static unsafe partial class MonoProfiler
 		}
 		public string ToCSV()
 		{
-			StringBuilder builder = PoolEx.GetStringBuilder();
+			StringBuilder builder = Pool.Get<StringBuilder>();
 
 			builder.AppendLine("Calls," +
 			                   "Total Time");
@@ -449,8 +448,7 @@ public static unsafe partial class MonoProfiler
 			                   $"{GetTotalTime()}");
 
 			string result = builder.ToString();
-
-			PoolEx.FreeStringBuilder(ref builder);
+			Pool.FreeUnmanaged(ref builder);
 			return result;
 		}
 		public string ToJson(bool indented)
@@ -632,7 +630,8 @@ public static unsafe partial class MonoProfiler
 		Timings = 1 << 3,
 		Calls = 1 << 4,
 		FastResume = 1 << 5, // Pass this when you're toggling the profiler multiple times on the same frame
-		GCEvents = 1 << 6
+		GCEvents = 1 << 6,
+		StackWalkAllocations = 1 << 7
 	}
 
 	public static bool Enabled { get; }
@@ -939,7 +938,7 @@ public static unsafe partial class MonoProfiler
 	}
 	private static void MapCallRecords(List<CallRecord> records)
 	{
-		var temp = PoolEx.GetDictionary<string, CallRecord>();
+		var temp = Pool.Get<Dictionary<string, CallRecord>>();
 
 		for (int i = 0; i < records.Count; i++)
 		{
@@ -995,7 +994,7 @@ public static unsafe partial class MonoProfiler
 		records.Clear();
 		records.AddRange(temp.Values);
 
-		PoolEx.FreeDictionary(ref temp);
+		Pool.FreeUnmanaged(ref temp);
 	}
 
 	public static bool TryStartProfileFor(MonoProfilerConfig.ProfileTypes profileType, Assembly assembly, string value, bool incremental = false)
