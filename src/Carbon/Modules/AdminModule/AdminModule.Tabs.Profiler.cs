@@ -919,12 +919,13 @@ public partial class AdminModule
 
 		if (!MonoProfiler.IsRecording && ap.Player.serverInput.IsDown(BUTTON.SPRINT))
 		{
-			var dictionary = PoolEx.GetDictionary<string, ModalModule.Modal.Field>();
+			var dictionary = Pool.Get<Dictionary<string, ModalModule.Modal.Field>>();
 
 			dictionary["duration"] = ModalModule.Modal.Field.Make("Duration", ModalModule.Modal.Field.FieldTypes.Float, true, 3f, customIsInvalid: field => field.Value.ToString().ToFloat() <= 0 ? "Duration must be above zero." : string.Empty);
 			dictionary["calls"] = ModalModule.Modal.Field.Make("Calls", ModalModule.Modal.Field.FieldTypes.Boolean, false, true);
 			dictionary["advancedmemory"] = ModalModule.Modal.Field.Make("Advanced Memory", ModalModule.Modal.Field.FieldTypes.Boolean, false, true);
 			dictionary["callmemory"] = ModalModule.Modal.Field.Make("Call Memory", ModalModule.Modal.Field.FieldTypes.Boolean, false, true);
+			dictionary["swa"] = ModalModule.Modal.Field.Make("Stack Walk Allocations", ModalModule.Modal.Field.FieldTypes.Boolean, false, true);
 			dictionary["timings"] = ModalModule.Modal.Field.Make("Timings (Performance Intensive)", ModalModule.Modal.Field.FieldTypes.Boolean, false, true);
 
 			Modal.Open(player, "Profile Recording", dictionary, (_, _) =>
@@ -935,6 +936,7 @@ public partial class AdminModule
 				if (dictionary["callmemory"].Get<bool>()) profilerArgs |= MonoProfiler.ProfilerArgs.CallMemory;
 				if (dictionary["calls"].Get<bool>()) profilerArgs |= MonoProfiler.ProfilerArgs.Calls;
 				if (dictionary["timings"].Get<bool>()) profilerArgs |= MonoProfiler.ProfilerArgs.Timings;
+				if (dictionary["swa"].Get<bool>()) profilerArgs |= MonoProfiler.ProfilerArgs.StackWalkAllocations;
 
 				var duration = dictionary["duration"].Get<float>();
 
@@ -953,13 +955,13 @@ public partial class AdminModule
 
 				Analytics.profiler_started(profilerArgs, true);
 
-				PoolEx.FreeDictionary(ref dictionary);
+				Pool.FreeUnmanaged(ref dictionary);
 
 				ap.SelectedTab.OnChange(ap, ap.SelectedTab);
 				Draw(player);
 			}, onCancel: () =>
 			{
-				PoolEx.FreeDictionary(ref dictionary);
+				Pool.FreeUnmanaged(ref dictionary);
 
 				ap.SelectedTab.OnChange(ap, ap.SelectedTab);
 				Draw(player);
@@ -1131,8 +1133,7 @@ public partial class AdminModule
 
 		if (!MonoProfiler.IsRecording)
 		{
-			var dictionary = PoolEx.GetDictionary<string, ModalModule.Modal.Field>();
-
+			var dictionary = Pool.Get<Dictionary<string, ModalModule.Modal.Field>>();
 			dictionary["duration"] = ModalModule.Modal.Field.Make("Duration", ModalModule.Modal.Field.FieldTypes.Float, true, 3f,
 				customIsInvalid: field => field.Get<float>() <= 0 ? "Duration must be above zero." : field.Get<float>() > 100 ? $"You cannot record above {TimeEx.Format(100, shortName: false).ToLower()}." : string.Empty);
 			dictionary["rate"] = ModalModule.Modal.Field.Make("Rate", ModalModule.Modal.Field.FieldTypes.Float, true, 1f,
@@ -1140,6 +1141,7 @@ public partial class AdminModule
 			dictionary["calls"] = ModalModule.Modal.Field.Make("Calls", ModalModule.Modal.Field.FieldTypes.Boolean, false, true);
 			dictionary["advancedmemory"] = ModalModule.Modal.Field.Make("Advanced Memory", ModalModule.Modal.Field.FieldTypes.Boolean, false, true);
 			dictionary["callmemory"] = ModalModule.Modal.Field.Make("Call Memory", ModalModule.Modal.Field.FieldTypes.Boolean, false, true);
+			dictionary["swa"] = ModalModule.Modal.Field.Make("Stack Walk Allocations", ModalModule.Modal.Field.FieldTypes.Boolean, false, true);
 			dictionary["timings"] = ModalModule.Modal.Field.Make("Timings (Performance Intensive)", ModalModule.Modal.Field.FieldTypes.Boolean, false, true);
 
 			Modal.Open(player, "Timeline Profiling", dictionary, (player, _) =>
@@ -1150,6 +1152,7 @@ public partial class AdminModule
 				if (dictionary["callmemory"].Get<bool>()) profilerArgs |= MonoProfiler.ProfilerArgs.CallMemory;
 				if (dictionary["calls"].Get<bool>()) profilerArgs |= MonoProfiler.ProfilerArgs.Calls;
 				if (dictionary["timings"].Get<bool>()) profilerArgs |= MonoProfiler.ProfilerArgs.Timings;
+				if (dictionary["swa"].Get<bool>()) profilerArgs |= MonoProfiler.ProfilerArgs.StackWalkAllocations;
 
 				ProfilerTab.recording.Discard();
 				ProfilerTab.recording.Start(dictionary["rate"].Get<float>(), dictionary["duration"].Get<float>(), profilerArgs, discarded =>
@@ -1169,13 +1172,13 @@ public partial class AdminModule
 				});
 				Analytics.profiler_tl_started(profilerArgs);
 
-				PoolEx.FreeDictionary(ref dictionary);
+				Pool.FreeUnmanaged(ref dictionary);
 
 				ap.SelectedTab.OnChange(ap, ap.SelectedTab);
 				Draw(player);
 			}, onCancel: () =>
 			{
-				PoolEx.FreeDictionary(ref dictionary);
+				Pool.FreeUnmanaged(ref dictionary);
 
 				ap.SelectedTab.OnChange(ap, ap.SelectedTab);
 				Draw(player);
