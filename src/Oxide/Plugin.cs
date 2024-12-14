@@ -149,6 +149,11 @@ public class Plugin : BaseHookable, IDisposable
 					}
 					Carbon.Logger.Debug(Name, $"Unprocessed hooks");
 				}
+
+				foreach (var method in HookableType.GetMethods(BindingFlags.Instance | BindingFlags.NonPublic))
+				{
+					InternalHooks.Handle(method.Name, false);
+				}
 			}
 		}
 		catch (Exception ex)
@@ -643,7 +648,7 @@ public class Plugin : BaseHookable, IDisposable
 
 		if (!Config.Exists(null))
 		{
-			LoadDefaultConfig();
+			CallHook(nameof(LoadDefaultConfig));
 			SaveConfig();
 		}
 		try
