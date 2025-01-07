@@ -103,6 +103,20 @@ public partial class Community
 				});
 			}
 
+			if (Config.Publicizer.PublicizedAssemblies == null)
+			{
+				Config.Publicizer.PublicizedAssemblies =
+				[
+					"Assembly-CSharp.dll",
+					"Facepunch.Console.dll",
+					"Facepunch.Network.dll",
+					"Facepunch.Nexus.dll",
+					"Rust.Clans.Local.dll",
+					"Rust.Harmony.dll",
+					"Rust.Data.dll"
+				];
+			}
+
 			if (Config.Aliases.Count == 0)
 			{
 				Config.Aliases["carbon"] = "c.version";
