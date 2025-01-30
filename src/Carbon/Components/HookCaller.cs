@@ -137,6 +137,17 @@ public static class HookCaller
 
 		return finalValue;
 	}
+	public static int GetTotalExceptions(uint hook)
+	{
+		int finalValue = default;
+
+		foreach (var cacheInstance in GetAllFor(hook))
+		{
+			finalValue += cacheInstance.Exceptions;
+		}
+
+		return finalValue;
+	}
 
 	private static object CallStaticHook(uint hookId, BindingFlags flag = BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Public, object[] args = null)
 	{
@@ -233,17 +244,31 @@ public static class HookCaller
 	}
 	public static void ConflictCheck(List<Conflict> conflicts, ref object result, uint hookId)
 	{
-		if (conflicts == null || conflicts.Count <= 1) return;
+		if (conflicts == null || conflicts.Count <= 1)
+		{
+			return;
+		}
 
 		var localResult = result = conflicts[0].Result;
-		var differentResults =  conflicts.Any(conflict => localResult != null && conflict.Result.ToString() != localResult.ToString());
+		var differentResults = false;
 
-		if (differentResults)
+		foreach (var conflict in conflicts)
 		{
-			var readableHook = HookStringPool.GetOrAdd(hookId);
-			Logger.Warn($" Hook conflict while calling '{readableHook}[{hookId}]': {conflicts.Select(x => $"{x.Hookable.Name} {x.Hookable.Version} [{x.Result}]").ToString(", ", " and ")}");
-			result = conflicts[^1].Result;
+			if (localResult == null || conflict.Result == localResult)
+			{
+				continue;
+			}
+			differentResults = true;
+			break;
 		}
+
+		if (!differentResults)
+		{
+			return;
+		}
+
+		Logger.Warn($" Hook conflict while calling '{ HookStringPool.GetOrAdd(hookId)}[{hookId}]': {conflicts.Select(x => $"{x.Hookable.Name} {x.Hookable.Version} [{x.Result}]").ToString(", ", " and ")}");
+		result = conflicts[^1].Result;
 	}
 
 	#region Hook Overrides
@@ -1356,11 +1381,11 @@ public static class HookCaller
 
 	#region Generator
 
-	internal static char[] _underscoreChar = new [] { '_' };
-	internal static char[] _dotChar = new [] { '.' };
-	internal static string[] _operatorsStrings = new [] { "&&", "||" };
-	internal static string _ifDirective = "#if";
-	internal static string _elifDirective = "#elif";
+	private static char[] _underscoreChar = new [] { '_' };
+	private static char[] _dotChar = new [] { '.' };
+	private static string[] _operatorsStrings = new [] { "&&", "||" };
+	private static string _ifDirective = "#if";
+	private static string _elifDirective = "#elif";
 
 	public static void GenerateInternalCallHook(CompilationUnitSyntax input, out CompilationUnitSyntax output, out MethodDeclarationSyntax generatedMethod, out bool isPartial, bool baseCall = false, string baseName = "plugin", List<ClassDeclarationSyntax> classList = null)
 	{
@@ -1499,11 +1524,13 @@ public static class HookCaller
 					{
 						return $"out var arg{parameterIndex}_{i}";
 					}
-					else if (x.Default != null || x.Type is NullableTypeSyntax)
+
+					if (x.Default != null || x.Type is NullableTypeSyntax)
 					{
 						return $"length > {parameterIndex} && args[{parameterIndex}] is {type} arg{parameterIndex}_{i} ? arg{parameterIndex}_{i} : ({type})default";
 					}
-					else if (x.Modifiers.Any(x => x.IsKind(SyntaxKind.RefKeyword)))
+
+					if (x.Modifiers.Any(x => x.IsKind(SyntaxKind.RefKeyword)))
 					{
 						return $"ref arg{parameterIndex}_{i}";
 					}
@@ -1564,7 +1591,8 @@ public static class HookCaller
 			methodContents += "\t\t\t\tbreak;\n\t\t\t}";
 		}
 
-		methodContents += "}\n}\ncatch (System.Exception ex)\n{\nCarbon.Logger.Error($\"Failed to call internal hook '{Carbon.Pooling.HookStringPool.GetOrAdd(hook)}' on " + baseName + " '{" + (baseName == "plugin" ? "base.Name" : "this.Name") + "} v{ " + (baseName == "plugin" ? "base.Version" : "this.Version") + "}' [{hook}]\", ex);\n}\n" +
+		methodContents += "}\n}\ncatch (System.Exception ex)\n{\nCarbon.Logger.Error($\"Failed to call internal hook '{Carbon.Pooling.HookStringPool.GetOrAdd(hook)}' on " + baseName + " '{" + (baseName == "plugin" ? "base.Name" : "this.Name") + "} v{ " + (baseName == "plugin" ? "base.Version" : "this.Version") + "}' [{hook}]\", ex);\n" +
+		                  "\nOnException(hook);\n}\n" +
 			$"return {(baseCall ? "base.InternalCallHook(hook, args)" : "(object)null")};";
 
 		generatedMethod = SyntaxFactory.MethodDeclaration(

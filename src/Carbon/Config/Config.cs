@@ -6,6 +6,7 @@ namespace Carbon.Core;
 [Serializable]
 public class Config
 {
+	public bool DeveloperMode { get; set; } = false;
 	public bool IsModded { get; set; } = true;
 	public List<Command.Prefix> Prefixes { get; set; } = new();
 	public Dictionary<string, string> Aliases { get; set; }
@@ -19,6 +20,7 @@ public class Config
 	public SelfUpdatingConfig SelfUpdating { get; set; } = new();
 	public DebuggingConfig Debugging { get; set; } = new();
 	public ProcessorsConfig Processors { get; set; } = new();
+	public PublicizerConfig Publicizer { get; set; } = new();
 	public LoggingConfig Logging { get; set; } = new();
 	public ProfilerConfig Profiler { get; set; } = new();
 	public CompilerConfig Compiler { get; set; } = new();
@@ -70,7 +72,6 @@ public class Config
 		public bool ScriptWatchers { get; set; } = true;
 		public bool ZipScriptWatchers { get; set; } = true;
 		public SearchOption ScriptWatcherOption { get; set; } = SearchOption.TopDirectoryOnly;
-		public bool HarmonyWatchers { get; set; } = true;
 		public bool ModuleWatchers { get; set; } = true;
 		public bool ExtensionWatchers { get; set; } = true;
 	}
@@ -108,6 +109,12 @@ public class Config
 	public class AnalyticsConfig
 	{
 		public bool Enabled { get; set; } = true;
+	}
+
+	public class PublicizerConfig
+	{
+		public List<string> PublicizedAssemblies { get; set; }
+		public List<string> PublicizerMemberIgnores { get; set; }
 	}
 
 	public class MiscConfig

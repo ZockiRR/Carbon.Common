@@ -33,7 +33,6 @@ public class Defines
 	internal static string _customLangFolder;
 	internal static string _customModuleFolder;
 	internal static string _customExtensionsFolder;
-	internal static string _customHarmonyFolder;
 	internal static string _customProfilesFolder;
 	internal static string _customLogsFolder;
 	internal static bool _commandLineInitialized;
@@ -52,7 +51,6 @@ public class Defines
 		_customExtensionsFolder = CommandLineEx.GetArgumentResult("-carbon.extdir");
 		_customLogsFolder = CommandLineEx.GetArgumentResult("-carbon.logdir");
 		_customProfilesFolder = CommandLineEx.GetArgumentResult("-carbon.profiledir");
-		_customHarmonyFolder = CommandLineEx.GetArgumentResult("-carbon.harmonydir");
 	}
 
 	public static string GetConfigFile()
@@ -170,10 +168,10 @@ public class Defines
 
 		return folder;
 	}
-	public static string GetHarmonyFolder()
+	public static string GetDeveloperFolder()
 	{
 		_initializeCommandLine();
-		var folder = Path.GetFullPath(string.IsNullOrEmpty(_customHarmonyFolder) ? Path.Combine(GetRootFolder(), "harmony") : _customHarmonyFolder);
+		var folder = Path.GetFullPath(Path.Combine(GetRootFolder(), "developer"));
 		Directory.CreateDirectory(folder);
 
 		return folder;
