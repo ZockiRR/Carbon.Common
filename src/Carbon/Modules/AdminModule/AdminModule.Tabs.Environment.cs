@@ -1,17 +1,8 @@
 ﻿#if !MINIMAL
 
-/*
-*
- * Copyright (c) 2022-2023 Carbon Community
- * All rights reserved.
- *
- */
-
-using Newtonsoft.Json;
-
 namespace Carbon.Modules;
 
-public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
+public partial class AdminModule
 {
 	public class EnvironmentTab
 	{
@@ -113,7 +104,7 @@ public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
 					}
 				}
 
-				tab = new AdminModule.Tab("env", "Environment", Community.Runtime.CorePlugin, access: "environment.use", onChange: (ap, tab) =>
+				tab = new AdminModule.Tab("env", "Environment", Community.Runtime.Core, access: "environment.use", onChange: (ap, tab) =>
 				{
 					Draw();
 				});

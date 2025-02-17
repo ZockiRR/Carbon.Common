@@ -1,11 +1,4 @@
-﻿/*
- *
- * Copyright (c) 2022-2023 Carbon Community 
- * All rights reserved.
- *
- */
-
-namespace Carbon.Extensions;
+﻿namespace Carbon.Extensions;
 
 public static class ExceptionEx
 {
@@ -16,7 +9,7 @@ public static class ExceptionEx
 
 		while (innerException != null)
 		{
-			fullStackTrace += "\n  Inner exception:\n  " + innerException.ToString();
+			fullStackTrace += "\n  Inner exception:\n  " + innerException;
 			innerException = innerException.InnerException;
 		}
 

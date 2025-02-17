@@ -1,9 +1,4 @@
-﻿/*
- *
- * Copyright (c) 2022-2023 Carbon Community 
- * All rights reserved.
- *
- */
+﻿using Facepunch;
 
 namespace Oxide.Core.Plugins;
 
@@ -11,7 +6,7 @@ public static class Extensions
 {
 	public static void Clear(this ItemContainer cont)
 	{
-		var items = Facepunch.Pool.GetList<Item>();
+		var items = Pool.Get<List<Item>>();
 		items.AddRange(cont.itemList);
 
 		foreach (var item in items)
@@ -20,5 +15,7 @@ public static class Extensions
 		}
 
 		ItemManager.DoRemoves();
+
+		Pool.FreeUnmanaged(ref items);
 	}
 }

@@ -1,11 +1,4 @@
-﻿/*
- *
- * Copyright (c) 2022-2023 Carbon Community
- * All rights reserved.
- *
- */
-
-public delegate void PluginEvent(Plugin plugin);
+﻿public delegate void PluginEvent(Plugin plugin);
 
 public class PluginManager
 {
@@ -34,9 +27,9 @@ public class PluginManager
 
 	public Plugin GetPlugin(string name)
 	{
-		if (name == "RustCore") return Community.Runtime.CorePlugin;
+		if (name == "RustCore") return Community.Runtime.Core;
 
-		return Community.Runtime.Plugins.Plugins.FirstOrDefault(x => x.Name == name);
+		return Community.Runtime.Plugins.FindPlugin(name);
 	}
 	public IEnumerable<Plugin> GetPlugins()
 	{

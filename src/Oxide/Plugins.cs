@@ -1,12 +1,5 @@
 ﻿using Facepunch;
 
-/*
- *
- * Copyright (c) 2022-2023 Carbon Community
- * All rights reserved.
- *
- */
-
 namespace Oxide.Core.Libraries;
 
 public class Plugins : Library
@@ -29,7 +22,7 @@ public class Plugins : Library
 	{
 		name = name.Replace(" ", "");
 
-		foreach (var mod in ModLoader.LoadedPackages)
+		foreach (var mod in ModLoader.Packages)
 		{
 			foreach (var plugin in mod.Plugins)
 			{
@@ -42,15 +35,23 @@ public class Plugins : Library
 
 	public Plugin[] GetAll()
 	{
-		var list = Pool.GetList<Plugin>();
-		foreach (var mod in ModLoader.LoadedPackages)
+		var list = Pool.Get<List<Plugin>>();
+		foreach (var mod in ModLoader.Packages)
 		{
 			list.AddRange(mod.Plugins);
 		}
 
 		var result = list.ToArray();
-		Pool.FreeList(ref list);
+		Pool.FreeUnmanaged(ref list);
 		return result;
+	}
+
+	public void GetAllNonAlloc(List<RustPlugin> buffer)
+	{
+		foreach (var mod in ModLoader.Packages)
+		{
+			buffer.AddRange(mod.Plugins);
+		}
 	}
 
 	public object CallHook(string hook)

@@ -1,16 +1,11 @@
-﻿/*
- *
- * Copyright (c) 2022-2023 Carbon Community
- * All rights reserved.
- *
- */
-
-using System.Text;
+﻿using System.Text;
 using API.Commands;
+using API.Events;
+using Facepunch;
 
 namespace Carbon.Core;
 
-public partial class CorePlugin : CarbonPlugin
+public partial class CorePlugin
 {
 	[ConsoleCommand("plugins", "Prints the list of mods and their loaded plugins. Eg. c.plugins [-j|--j|-json|-abc|--json|-t|-m|-f|-ls] [-asc]")]
 	[AuthLevel(2)]
@@ -29,23 +24,23 @@ public partial class CorePlugin : CarbonPlugin
 			case "--json":
 				arg.ReplyWith(new
 				{
-					Plugins = ModLoader.LoadedPackages,
+					Plugins = ModLoader.Packages,
 					Unloaded = Community.Runtime.ScriptProcessor.IgnoreList,
-					Failed = ModLoader.FailedCompilations.Values.Where(x => x.IsValid())
+					Failed = ModLoader.FailedCompilations.Values.Where(x => x.HasFailed())
 				});
 				break;
 
 			default:
 				{
-					using var body = new StringTable("#", "Package", "Author", "Version", "Hook Time", "Hook Fires", "Hook Memory", "Hook Lag", "Compile Time", "Uptime");
+					using var body = new StringTable("#", "package", "author", "version", "hook time", "hook fires", "hook memory", "hook lag", "hook exceptions", "compile time", "uptime");
 					var count = 1;
 
-					foreach (var mod in ModLoader.LoadedPackages)
+					foreach (var mod in ModLoader.Packages)
 					{
 						body.AddRow($"{count:n0}",
 							$"{mod.Name}{(mod.Plugins.Count >= 1 ? $" ({mod.Plugins.Count:n0})" : string.Empty)}",
 							string.Empty, string.Empty, string.Empty, string.Empty, string.Empty, string.Empty,
-							string.Empty, string.Empty);
+							string.Empty, string.Empty, string.Empty);
 
 						IEnumerable<RustPlugin> array = mode switch
 						{
@@ -67,29 +62,12 @@ public partial class CorePlugin : CarbonPlugin
 
 						foreach (var plugin in array)
 						{
-							var hookTimeAverageValue =
-#if DEBUG
-								(float)plugin.HookTimeAverage.CalculateAverage();
-#else
-								0;
-#endif
-							var memoryAverageValue =
-#if DEBUG
-								(float)plugin.MemoryAverage.CalculateAverage();
-#else
-								0;
-#endif
-							var hookTimeAverage = Mathf.RoundToInt(hookTimeAverageValue) == 0
-								? string.Empty
-								: $" (avg {hookTimeAverageValue:0}ms)";
-							var memoryAverage = Mathf.RoundToInt(memoryAverageValue) == 0
-								? string.Empty
-								: $" (avg {ByteEx.Format(memoryAverageValue, shortName: true, stringFormat: "{0}{1}").ToLower()})";
 							body.AddRow(string.Empty, plugin.Title, plugin.Author, $"v{plugin.Version}",
-								plugin.TotalHookTime.TotalMilliseconds == 0 ? string.Empty : $"{plugin.TotalHookTime.TotalMilliseconds:0}ms{hookTimeAverage}",
+								plugin.TotalHookTime.TotalMilliseconds == 0 ? string.Empty : $"{plugin.TotalHookTime.TotalMilliseconds:0}ms",
 								plugin.TotalHookFires == 0 ? string.Empty : $"{plugin.TotalHookFires:n0}",
-								plugin.TotalMemoryUsed == 0 ? string.Empty : $"{ByteEx.Format(plugin.TotalMemoryUsed, shortName: true, stringFormat: "{0}{1}").ToLower()}{memoryAverage}",
+								plugin.TotalMemoryUsed == 0 ? string.Empty : $"{ByteEx.Format(plugin.TotalMemoryUsed, shortName: true, stringFormat: "{0}{1}").ToLower()}",
 								plugin.TotalHookLagSpikes == 0 ? string.Empty : $"{plugin.TotalHookLagSpikes:n0}",
+								plugin.TotalHookExceptions == 0 ? string.Empty : $"{plugin.TotalHookExceptions:n0}",
 								plugin.IsPrecompiled
 									? string.Empty
 									: $"{plugin.CompileTime.TotalMilliseconds:0}ms [{plugin.InternalCallHookGenTime.TotalMilliseconds:0}ms]",
@@ -99,18 +77,18 @@ public partial class CorePlugin : CarbonPlugin
 						count++;
 					}
 
-					using var unloaded = new StringTable("*", $"Unloaded Plugins ({Community.Runtime.ScriptProcessor.IgnoreList.Count:n0})");
+					using var unloaded = new StringTable("*", $"unloaded plugins ({Community.Runtime.ScriptProcessor.IgnoreList.Count:n0})");
 
 					foreach (var unloadedPlugin in Community.Runtime.ScriptProcessor.IgnoreList)
 					{
 						unloaded.AddRow(string.Empty, Path.GetFileName(unloadedPlugin));
 					}
 
-					using var failed = new StringTable("*", $"Failed Plugins ({ModLoader.FailedCompilations.Count(x => x.Value.IsValid()):n0})", "Line", "Column", "Stacktrace");
+					using var failed = new StringTable("*", $"failed plugins ({ModLoader.FailedCompilations.Count(x => x.Value.HasFailed()):n0})", "Line", "Stacktrace");
 
 					foreach (var compilation in ModLoader.FailedCompilations.Values)
 					{
-						if (!compilation.IsValid())
+						if (!compilation.HasFailed())
 						{
 							continue;
 						}
@@ -124,7 +102,7 @@ public partial class CorePlugin : CarbonPlugin
 							SplitMessageUp(true, failed, compilation, error, 0);
 						}
 
-						static void SplitMessageUp(bool initial, StringTable table, ModLoader.FailedCompilation compilation, ModLoader.Trace trace, int skip)
+						static void SplitMessageUp(bool initial, StringTable table, ModLoader.CompilationResult compilation, ModLoader.Trace trace, int skip)
 						{
 							const int size = 150;
 
@@ -133,8 +111,7 @@ public partial class CorePlugin : CarbonPlugin
 							table.AddRow(
 								string.Empty,
 								initial ? Path.GetFileName(compilation.File) : string.Empty,
-								isAboveSize || initial ? $"{trace.Line}" : string.Empty,
-								isAboveSize || initial ? $"{trace.Column}" : string.Empty,
+								isAboveSize || initial ? $"{trace.Line}:{trace.Column}" : string.Empty,
 								$"{trace.Message.Substring(skip, size.Clamp(0, trace.Message.Length - skip))}{(isAboveSize ? "..." : string.Empty)}");
 
 							if (isAboveSize)
@@ -150,85 +127,208 @@ public partial class CorePlugin : CarbonPlugin
 		}
 	}
 
-	[ConsoleCommand("reload", "Reloads all or specific mods / plugins. E.g 'c.reload * <except[]>'' to reload everything.")]
+	[ConsoleCommand("reload", "Reloads all or specific mods / plugins. E.g 'c.reload * <except[]>' to reload everything, 'c.reload PluginA [PluginB..]' to reload multiple..")]
 	[AuthLevel(2)]
 	private void Reload(ConsoleSystem.Arg arg)
 	{
-		if (!arg.HasArgs(1)) return;
+		if (!arg.HasArgs(1))
+		{
+			return;
+		}
 
 		RefreshOrderedFiles();
 
-		var name = arg.GetString(0);
+		var name = arg.FullString;
 		switch (name)
 		{
 			case "*":
-				Community.Runtime.ReloadPlugins(arg.Args.Skip(1));
+				var plugins = Pool.Get<List<RustPlugin>>();
+				plugins.AddRange(Community.Runtime.Plugins.Plugins);
+
+				foreach(var plugin in plugins)
+				{
+					if (!plugin.HasInitialized)
+					{
+						continue;
+					}
+
+					if (!Community.Runtime.Config.Watchers.ScriptWatchers || Community.Runtime.MonoProfilerConfig.IsWhitelisted(Profiler.MonoProfilerConfig.ProfileTypes.Plugin, plugin.Name) != Assemblies.Plugins.Get(plugin.Name).IsProfiledAssembly)
+					{
+						plugin.ProcessorProcess.MarkDirty();
+						continue;
+					}
+
+					var hooks = Pool.Get<List<uint>>();
+					var hookMethods = Pool.Get<List<HookMethodAttribute>>();
+					var pluginReferences = Pool.Get<List<PluginReferenceAttribute>>();
+					var requires = Pool.Get<List<Plugin>>();
+					var process = plugin.ProcessorProcess;
+					hooks.AddRange(plugin.Hooks);
+					hookMethods.AddRange(plugin.HookMethods);
+					pluginReferences.AddRange(plugin.PluginReferences);
+					requires.AddRange(plugin.Requires);
+
+					ModLoader.UninitializePlugin(plugin);
+					ModLoader.InitializePlugin(plugin.GetType(), out var newPlugin, plugin.Package, p =>
+					{
+						p.IsCorePlugin = plugin.IsCorePlugin;
+						p.HasConditionals = plugin.HasConditionals;
+						p.IsExtension = plugin.IsExtension;
+
+						p.Hooks = [.. hooks];
+						p.HookMethods = [.. hookMethods];
+						p.PluginReferences = [.. pluginReferences];
+						p.Requires = [.. requires];
+
+						p.SetProcessor(Community.Runtime.ScriptProcessor, process);
+						p.CompileTime = plugin.CompileTime;
+						p.InternalCallHookGenTime = plugin.InternalCallHookGenTime;
+						p.InternalCallHookSource = plugin.InternalCallHookSource;
+						p.FilePath = plugin.FilePath;
+						p.FileName = plugin.FileName;
+					});
+
+					Pool.FreeUnmanaged(ref hooks);
+					Pool.FreeUnmanaged(ref hookMethods);
+					Pool.FreeUnmanaged(ref pluginReferences);
+					Pool.FreeUnmanaged(ref requires);
+
+					var eventArg = Pool.Get<CarbonEventArgs>();
+					eventArg.Init(newPlugin);
+					Community.Runtime.Events.Trigger(CarbonEvent.PluginPreload, eventArg);
+					Pool.Free(ref eventArg);
+
+					InternalApplyAllPluginReferences();
+
+					if (Community.AllProcessorsFinalized)
+					{
+						ModLoader.OnPluginProcessFinished();
+					}
+
+					// OnPluginLoaded
+					HookCaller.CallStaticHook(3051933177, newPlugin);
+				}
+
+				Pool.FreeUnmanaged(ref plugins);
+
+				ModLoader.OnPluginProcessFinished();
 				break;
 
 			default:
-				var path = GetPluginPath(name);
-
-				if (!string.IsNullOrEmpty(path.Value))
+				if (name.Contains(' '))
 				{
-					Community.Runtime.ScriptProcessor.ClearIgnore(path.Value);
-
-					if (Community.Runtime.ScriptProcessor.InstanceBuffer.TryGetValue(path.Key, out IScriptProcessor.IProcess instance))
+					foreach (var argValue in arg.Args)
 					{
-						instance.Clear();
+						Do(argValue, arg);
 					}
-
-					Community.Runtime.ScriptProcessor.Prepare(path.Key, path.Value);
-					return;
+				}
+				else
+				{
+					Do(name, arg);
 				}
 
-				var pluginFound = false;
-				var pluginPrecompiled = false;
-
-				foreach (var mod in ModLoader.LoadedPackages)
+				static void Do(string name, ConsoleSystem.Arg arg)
 				{
-					var plugins = Facepunch.Pool.GetList<RustPlugin>();
-					plugins.AddRange(mod.Plugins);
+					var path = GetPluginPath(name);
+					var plugin = ModLoader.FindPlugin(name);
 
-					foreach (var plugin in plugins)
+					if (!string.IsNullOrEmpty(path.Value))
 					{
-						if (plugin.IsPrecompiled) continue;
-
-						if (plugin.Name == name)
+						if (Community.Runtime.ScriptProcessor.IgnoreList.Contains(path.Value) || ModLoader.GetCompilationResult(path.Value).HasFailed())
 						{
-							pluginFound = true;
+							Community.Runtime.ScriptProcessor.ClearIgnore(path.Value);
 
-							if (plugin.IsPrecompiled)
+							if (Community.Runtime.ScriptProcessor.InstanceBuffer.TryGetValue(path.Key, out var instance))
 							{
-								pluginPrecompiled = true;
+								instance.Clear();
 							}
-							else
+
+							Community.Runtime.ScriptProcessor.Prepare(path.Key, path.Value);
+							return;
+						}
+						else if (plugin != null && !plugin.IsPrecompiled)
+						{
+							if (!plugin.HasInitialized)
 							{
-								plugin.ProcessorProcess.Clear();
-								plugin.ProcessorProcess.Dispose();
-								plugin.ProcessorProcess.Execute(plugin.Processor);
-								mod.Plugins.Remove(plugin);
+								return;
 							}
+
+							if (!Community.Runtime.Config.Watchers.ScriptWatchers || Community.Runtime.MonoProfilerConfig.IsWhitelisted(Profiler.MonoProfilerConfig.ProfileTypes.Plugin, plugin.Name) != Assemblies.Plugins.Get(plugin.Name).IsProfiledAssembly)
+							{
+								plugin.ProcessorProcess.MarkDirty();
+								return;
+							}
+
+							var hooks = Pool.Get<List<uint>>();
+							var hookMethods = Pool.Get<List<HookMethodAttribute>>();
+							var pluginReferences = Pool.Get<List<PluginReferenceAttribute>>();
+							var requires = Pool.Get<List<Plugin>>();
+							var process = plugin.ProcessorProcess;
+							hooks.AddRange(plugin.Hooks);
+							hookMethods.AddRange(plugin.HookMethods);
+							pluginReferences.AddRange(plugin.PluginReferences);
+							requires.AddRange(plugin.Requires);
+
+							ModLoader.UninitializePlugin(plugin);
+							ModLoader.InitializePlugin(plugin.GetType(), out var newPlugin, plugin.Package, p =>
+							{
+								p.IsCorePlugin = plugin.IsCorePlugin;
+								p.HasConditionals = plugin.HasConditionals;
+								p.IsExtension = plugin.IsExtension;
+
+								p.Hooks = [.. hooks];
+								p.HookMethods = [.. hookMethods];
+								p.PluginReferences = [.. pluginReferences];
+								p.Requires = [.. requires];
+
+								p.SetProcessor(Community.Runtime.ScriptProcessor, process);
+								p.CompileTime = plugin.CompileTime;
+								p.InternalCallHookGenTime = plugin.InternalCallHookGenTime;
+								p.InternalCallHookSource = plugin.InternalCallHookSource;
+								p.FilePath = plugin.FilePath;
+								p.FileName = plugin.FileName;
+							});
+
+							Pool.FreeUnmanaged(ref hooks);
+							Pool.FreeUnmanaged(ref hookMethods);
+							Pool.FreeUnmanaged(ref pluginReferences);
+							Pool.FreeUnmanaged(ref requires);
+
+							var eventArg = Pool.Get<CarbonEventArgs>();
+							eventArg.Init(newPlugin);
+							Community.Runtime.Events.Trigger(CarbonEvent.PluginPreload, eventArg);
+							Pool.Free(ref eventArg);
+
+							InternalApplyAllPluginReferences();
+
+							if (Community.AllProcessorsFinalized)
+							{
+								ModLoader.OnPluginProcessFinished();
+							}
+
+							// OnPluginLoaded
+							HookCaller.CallStaticHook(3051933177, newPlugin);
+
+							return;
 						}
 					}
 
-					Facepunch.Pool.FreeList(ref plugins);
-				}
-
-				if (!pluginFound)
-				{
-					Logger.Warn($"Plugin {name} was not found or was typed incorrectly.");
-				}
-				else if (pluginPrecompiled)
-				{
-					Logger.Warn($"Plugin {name} is a precompiled plugin which can only be reloaded programmatically.");
+					if (plugin == null)
+					{
+						Community.Runtime.Core.LoadPlugin(arg);
+					}
+					else if (plugin.IsPrecompiled)
+					{
+						Logger.Warn($"Plugin {name} is a precompiled plugin which can only be reloaded programmatically.");
+					}
 				}
 				break;
 		}
 	}
 
-	[ConsoleCommand("load", "Loads all mods and/or plugins. E.g 'c.load * <except[]>'' to load everything you've unloaded.")]
+	[ConsoleCommand("load", "Loads all mods and/or plugins. E.g 'c.load * <except[]>' to load everything, 'c.load PluginA [PluginB..]' to load multiple.")]
 	[AuthLevel(2)]
-	private void LoadPlugin(ConsoleSystem.Arg arg)
+	internal void LoadPlugin(ConsoleSystem.Arg arg)
 	{
 		if (!arg.HasArgs(1))
 		{
@@ -238,59 +338,60 @@ public partial class CorePlugin : CarbonPlugin
 
 		RefreshOrderedFiles();
 
-		var name = arg.GetString(0);
+		var name = arg.FullString;
 		switch (name)
 		{
 			case "*":
-				//
-				// Scripts
-				//
+				var except = arg.Args.Skip(1);
+
+				Community.Runtime.ScriptProcessor.IgnoreList.RemoveAll(x => !except.Any() || except.Any(x.Contains));
+
+				foreach (var plugin in OrderedFiles)
 				{
-					var except = arg.Args.Skip(1);
-
-					Community.Runtime.ScriptProcessor.IgnoreList.RemoveAll(x => !except.Any() || except.Any(x.Contains));
-
-					foreach (var plugin in OrderedFiles)
+					if (except.Any(plugin.Value.Contains) || Community.Runtime.ScriptProcessor.InstanceBuffer.ContainsKey(plugin.Key))
 					{
-						if (except.Any(plugin.Value.Contains) || Community.Runtime.ScriptProcessor.InstanceBuffer.ContainsKey(plugin.Key))
-						{
-							continue;
-						}
-
-						if (!Community.Runtime.ScriptProcessor.Exists(plugin.Value))
-						{
-							Community.Runtime.ScriptProcessor.Prepare(plugin.Key, plugin.Value);
-						}
+						continue;
 					}
-					break;
+
+					if (!Community.Runtime.ScriptProcessor.Exists(plugin.Value))
+					{
+						Community.Runtime.ScriptProcessor.Prepare(plugin.Key, plugin.Value);
+					}
 				}
+				break;
 
 			default:
+				if (name.Contains(' '))
+				{
+					foreach (var argValue in arg.Args)
+					{
+						Do(argValue);
+					}
+				}
+				else
+				{
+					Do(name);
+				}
+
+				static void Do(string name)
 				{
 					var path = GetPluginPath(name);
 					if (!string.IsNullOrEmpty(path.Value))
 					{
 						Community.Runtime.ScriptProcessor.ClearIgnore(path.Value);
 						Community.Runtime.ScriptProcessor.Prepare(path.Key, path.Value);
+						Logger.Warn($"Requested '{path.Key}' for compilation");
 						return;
 					}
 
 					Logger.Warn($"Plugin {name} was not found or was typed incorrectly.");
-
-					/*var module = BaseModule.GetModule<DRMModule>();
-					foreach (var drm in module.Config.DRMs)
-					{
-						foreach (var entry in drm.Entries)
-						{
-							if (entry.Id == name) drm.RequestEntry(entry);
-						}
-					}*/
-					break;
 				}
+				break;
+
 		}
 	}
 
-	[ConsoleCommand("unload", "Unloads all mods and/or plugins. E.g 'c.unload * <except[]>' to unload everything. They'll be marked as 'ignored'.")]
+	[ConsoleCommand("unload", "Unloads all mods and/or plugins. E.g 'c.unload * <except[]>' to unload everything, 'c.unload PluginA [PluginB..]' to unload multiple. They'll be marked as 'ignored'.")]
 	[AuthLevel(2)]
 	private void UnloadPlugin(ConsoleSystem.Arg arg)
 	{
@@ -302,109 +403,65 @@ public partial class CorePlugin : CarbonPlugin
 
 		RefreshOrderedFiles();
 
-		var name = arg.GetString(0);
+		var name = arg.FullString;
 		switch (name)
 		{
 			case "*":
 				var except = arg.Args.Skip(1);
-
-				//
-				// Scripts
-				//
 				{
-					var tempList = Facepunch.Pool.GetList<string>();
-
-					foreach (var bufferInstance in Community.Runtime.ScriptProcessor.InstanceBuffer)
-					{
-						tempList.Add(bufferInstance.Value.File);
-					}
-
-					Community.Runtime.ScriptProcessor.IgnoreList.RemoveAll(x => !except.Any() || (except.Any() && !except.Any(x.Contains)));
 					Community.Runtime.ScriptProcessor.Clear(except);
 
-					foreach (var plugin in tempList)
+					var plugins = Pool.Get<List<RustPlugin>>();
+					plugins.AddRange(Community.Runtime.Plugins.Plugins);
+
+					foreach (var plugin in plugins)
 					{
-						if (except.Any(plugin.Contains))
+						if (except.Contains(plugin.Name))
 						{
 							continue;
 						}
 
-						Community.Runtime.ScriptProcessor.Ignore(plugin);
+						ModLoader.UninitializePlugin(plugin);
+						Community.Runtime.ScriptProcessor.Ignore(plugin.Name);
 					}
+
+					Pool.FreeUnmanaged(ref plugins);
 				}
-
-				//
-				// Web-Scripts
-				//
-				{
-					var tempList = Facepunch.Pool.GetList<string>();
-					tempList.AddRange(Community.Runtime.WebScriptProcessor.IgnoreList);
-					Community.Runtime.WebScriptProcessor.IgnoreList.RemoveAll(x => !except.Any() || (except.Any() && !except.Any(x.Contains)));
-					Community.Runtime.WebScriptProcessor.Clear(except);
-
-					foreach (var plugin in tempList)
-					{
-						if (except.Any(plugin.Contains))
-						{
-							continue;
-						}
-
-						Community.Runtime.WebScriptProcessor.Ignore(plugin);
-					}
-					Facepunch.Pool.FreeList(ref tempList);
-					break;
-				}
-
+				break;
 			default:
+				if (name.Contains(' '))
+				{
+					foreach (var argValue in arg.Args)
+					{
+						Do(arg, argValue);
+					}
+				}
+				else
+				{
+					Do(arg, name);
+				}
+
+				static void Do(ConsoleSystem.Arg arg, string name)
 				{
 					var path = GetPluginPath(name);
+
 					if (!string.IsNullOrEmpty(path.Value))
 					{
 						Community.Runtime.ScriptProcessor.Ignore(path.Value);
-						Community.Runtime.WebScriptProcessor.Ignore(path.Value);
 					}
 
-					var pluginFound = false;
-					var pluginPrecompiled = false;
+					var plugin = ModLoader.FindPlugin(name);
 
-					foreach (var mod in ModLoader.LoadedPackages)
+					if(plugin != null)
 					{
-						var plugins = Facepunch.Pool.GetList<RustPlugin>();
-						plugins.AddRange(mod.Plugins);
-
-						foreach (var plugin in plugins)
-						{
-							if (plugin.Name.Equals(name, StringComparison.InvariantCultureIgnoreCase))
-							{
-								pluginFound = true;
-
-								if (plugin.IsPrecompiled)
-								{
-									pluginPrecompiled = true;
-								}
-								else
-								{
-									plugin.ProcessorProcess?.Clear();
-									plugin.ProcessorProcess?.Dispose();
-									mod.Plugins.Remove(plugin);
-								}
-							}
-						}
-
-						Facepunch.Pool.FreeList(ref plugins);
+						ModLoader.UninitializePlugin(plugin);
 					}
-
-					if (!pluginFound)
+					else
 					{
-						if (string.IsNullOrEmpty(path.Value)) Logger.Warn($"Plugin {name} was not found or was typed incorrectly.");
-						else Logger.Warn($"Plugin {name} was not loaded but was marked as ignored.");
+						arg.ReplyWith($"Couldn't find a plugin with that name: {name}");
 					}
-					else if (pluginPrecompiled)
-					{
-						Logger.Warn($"Plugin {name} is a precompiled plugin which can only be unloaded programmatically.");
-					}
-					break;
 				}
+				break;
 		}
 	}
 
@@ -421,7 +478,7 @@ public partial class CorePlugin : CarbonPlugin
 		var name = arg.GetString(0).ToLower();
 		var mode = arg.GetString(1);
 		var flip = arg.GetString(2).Equals("-asc");
-		var plugin = ModLoader.LoadedPackages.SelectMany(x => x.Plugins).FirstOrDefault(x => x.Name.Equals(name, StringComparison.InvariantCultureIgnoreCase) || x.Name.Contains(name, CompareOptions.OrdinalIgnoreCase));
+		var plugin = ModLoader.Packages.SelectMany(x => x.Plugins).FirstOrDefault(x => x.Name.Equals(name, StringComparison.InvariantCultureIgnoreCase) || x.Name.Contains(name, CompareOptions.OrdinalIgnoreCase));
 		var count = 1;
 
 		if (plugin == null)
@@ -430,15 +487,16 @@ public partial class CorePlugin : CarbonPlugin
 			return;
 		}
 
-		using (var table = new StringTable(string.Empty, "Id", "Hook", "Time", "Fires", "Memory", "Lag", "Subscribed", "Async & Overrides"))
+		using (var table = new StringTable(string.Empty, "id", "hook", "time", "fires", "memory", "lag", "exceptions", "subscribed", "async / hooks"))
 		{
 			IEnumerable<List<CachedHook>> array = mode switch
 			{
-				"-t" => (flip ? plugin.HookPool.OrderBy(x => x.Value.Sum(x => x.HookTime.TotalMilliseconds)) : plugin.HookPool.OrderByDescending(x => x.Value.Sum(x => x.HookTime.TotalMilliseconds))).Select(x => x.Value),
-				"-m" => (flip ? plugin.HookPool.OrderBy(x => x.Value.Sum(x => x.MemoryUsage)) : plugin.HookPool.OrderByDescending(x => x.Value.Sum(x => x.MemoryUsage))).Select(x => x.Value),
-				"-f" => (flip ? plugin.HookPool.OrderBy(x => x.Value.Sum(x => x.TimesFired)) : plugin.HookPool.OrderByDescending(x => x.Value.Sum(x => x.TimesFired))).Select(x => x.Value),
-				"-ls" => (flip ? plugin.HookPool.OrderBy(x => x.Value.Sum(x => x.LagSpikes)) : plugin.HookPool.OrderByDescending(x => x.Value.Sum(x => x.LagSpikes))).Select(x => x.Value),
-				_ => plugin.HookPool.Select(x => x.Value)
+				"-t" => (flip ? plugin.HookPool.OrderBy(x => x.Value.Hooks.Sum(x => x.HookTime.TotalMilliseconds)) : plugin.HookPool.OrderByDescending(x => x.Value.Hooks.Sum(x => x.HookTime.TotalMilliseconds))).Select(x => x.Value.Hooks),
+				"-m" => (flip ? plugin.HookPool.OrderBy(x => x.Value.Hooks.Sum(x => x.MemoryUsage)) : plugin.HookPool.OrderByDescending(x => x.Value.Hooks.Sum(x => x.MemoryUsage))).Select(x => x.Value.Hooks),
+				"-f" => (flip ? plugin.HookPool.OrderBy(x => x.Value.Hooks.Sum(x => x.TimesFired)) : plugin.HookPool.OrderByDescending(x => x.Value.Hooks.Sum(x => x.TimesFired))).Select(x => x.Value.Hooks),
+				"-ls" => (flip ? plugin.HookPool.OrderBy(x => x.Value.Hooks.Sum(x => x.LagSpikes)) : plugin.HookPool.OrderByDescending(x => x.Value.Hooks.Sum(x => x.LagSpikes))).Select(x => x.Value.Hooks),
+				"-ex" => (flip ? plugin.HookPool.OrderBy(x => x.Value.Hooks.Sum(x => x.Exceptions)) : plugin.HookPool.OrderByDescending(x => x.Value.Hooks.Sum(x => x.Exceptions))).Select(x => x.Value.Hooks),
+				_ => plugin.HookPool.Select(x => x.Value.Hooks)
 			};
 
 			foreach (var hook in array)
@@ -464,6 +522,7 @@ public partial class CorePlugin : CarbonPlugin
 				var hookAsyncCount = hook.Count(x => x.IsAsync);
 				var hookTimesFired = hook.Sum(x => x.TimesFired);
 				var hookLagSpikes = hook.Sum(x => x.LagSpikes);
+				var hookExceptions = hook.Sum(x => x.Exceptions);
 
 				table.AddRow(string.Empty,
 					hookId,
@@ -472,6 +531,7 @@ public partial class CorePlugin : CarbonPlugin
 					hookTimesFired == 0 ? string.Empty : $"{hookTimesFired:n0}",
 					hookMemoryUsage == 0 ? string.Empty : $"{ByteEx.Format(hookMemoryUsage, shortName: true).ToLower()}",
 					hookLagSpikes == 0 ? string.Empty : $"{hookLagSpikes:n0}",
+					hookExceptions == 0 ? string.Empty : $"{hookExceptions:n0}",
 					!plugin.IgnoredHooks.Contains(hookId) ? "*" : string.Empty,
 					$"{hookAsyncCount:n0} / {hookCount:n0}");
 
@@ -522,7 +582,7 @@ public partial class CorePlugin : CarbonPlugin
 		}
 
 		var name = arg.GetString(0).ToLower();
-		var plugin = ModLoader.LoadedPackages.SelectMany(x => x.Plugins).FirstOrDefault(x => x.Name.Equals(name, StringComparison.InvariantCultureIgnoreCase) || x.Name.Contains(name, CompareOptions.OrdinalIgnoreCase));
+		var plugin = ModLoader.Packages.SelectMany(x => x.Plugins).FirstOrDefault(x => x.Name.Equals(name, StringComparison.InvariantCultureIgnoreCase) || x.Name.Contains(name, CompareOptions.OrdinalIgnoreCase));
 
 		if (plugin == null)
 		{
@@ -530,10 +590,10 @@ public partial class CorePlugin : CarbonPlugin
 			return;
 		}
 
-		var builder = PoolEx.GetStringBuilder();
+		var builder = Pool.Get<StringBuilder>();
 		var count = 1;
 
-		using (var table = new StringTable("Chat Commands"))
+		using (var table = new StringTable("chat commands"))
 		{
 			foreach (var command in Community.Runtime.CommandManager.Chat.Where(x => x.Reference == plugin).Distinct())
 			{
@@ -550,7 +610,7 @@ public partial class CorePlugin : CarbonPlugin
 			builder.AppendLine(table.ToStringMinimal());
 		}
 
-		using (var table = new StringTable("Console Commands"))
+		using (var table = new StringTable("console commands"))
 		{
 			count = 1;
 			foreach (var command in Community.Runtime.CommandManager.ClientConsole.Where(x => x.Reference == plugin))
@@ -569,7 +629,7 @@ public partial class CorePlugin : CarbonPlugin
 		}
 
 		arg.ReplyWith(builder.ToString());
-		PoolEx.FreeStringBuilder(ref builder);
+		Pool.FreeUnmanaged(ref builder);
 	}
 
 	[ConsoleCommand("reloadconfig", "Reloads a plugin's config file. This might have unexpected results, use cautiously.")]
@@ -590,7 +650,7 @@ public partial class CorePlugin : CarbonPlugin
 			case "*":
 				{
 
-					foreach (var package in ModLoader.LoadedPackages)
+					foreach (var package in ModLoader.Packages)
 					{
 						foreach (var plugin in package.Plugins)
 						{
@@ -607,9 +667,9 @@ public partial class CorePlugin : CarbonPlugin
 				{
 					var pluginFound = false;
 
-					foreach (var mod in ModLoader.LoadedPackages)
+					foreach (var mod in ModLoader.Packages)
 					{
-						var plugins = Facepunch.Pool.GetList<RustPlugin>();
+						var plugins = Facepunch.Pool.Get<List<RustPlugin>>();
 						plugins.AddRange(mod.Plugins);
 
 						foreach (var plugin in plugins)
@@ -623,7 +683,7 @@ public partial class CorePlugin : CarbonPlugin
 							}
 						}
 
-						Facepunch.Pool.FreeList(ref plugins);
+						Facepunch.Pool.FreeUnmanaged(ref plugins);
 					}
 
 					if (!pluginFound)
@@ -683,9 +743,9 @@ public partial class CorePlugin : CarbonPlugin
 					var pluginFound = false;
 					var pluginPrecompiled = false;
 
-					foreach (var mod in ModLoader.LoadedPackages)
+					foreach (var mod in ModLoader.Packages)
 					{
-						var plugins = Facepunch.Pool.GetList<RustPlugin>();
+						var plugins = Facepunch.Pool.Get<List<RustPlugin>>();
 						plugins.AddRange(mod.Plugins);
 
 						foreach (var plugin in plugins.Where(plugin => plugin.Name.Equals(name, StringComparison.InvariantCultureIgnoreCase)))
@@ -696,14 +756,9 @@ public partial class CorePlugin : CarbonPlugin
 							{
 								pluginPrecompiled = true;
 							}
-							else
-							{
-								plugin.ProcessorProcess?.Dispose();
-								mod.Plugins.Remove(plugin);
-							}
 						}
 
-						Facepunch.Pool.FreeList(ref plugins);
+						Facepunch.Pool.FreeUnmanaged(ref plugins);
 					}
 
 					if (!pluginFound)
@@ -713,7 +768,8 @@ public partial class CorePlugin : CarbonPlugin
 
 						return;
 					}
-					else if (pluginPrecompiled)
+
+					if (pluginPrecompiled)
 					{
 						Logger.Warn($"Plugin {path.Key} is a precompiled plugin which can only be unloaded/uninstalled programmatically.");
 						return;

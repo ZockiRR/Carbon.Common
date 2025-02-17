@@ -1,14 +1,8 @@
-﻿/*
- *
- * Copyright (c) 2022-2023 Carbon Community
- * All rights reserved.
- *
- */
+﻿namespace Carbon.Core;
 
-namespace Carbon.Core;
 #pragma warning disable IDE0051
 
-public partial class CorePlugin : CarbonPlugin
+public partial class CorePlugin
 {
 	internal static object IOnLoseCondition(Item item, float amount)
 	{
@@ -18,7 +12,7 @@ public partial class CorePlugin : CarbonPlugin
 		args[1] = amount;
 
 		// OnLoseCondition
-		HookCaller.CallStaticHook(3503014187, args);
+		HookCaller.CallStaticHook(2025192851, args: args);
 		amount = (float)args[1];
 
 		HookCaller.Caller.ReturnBuffer(args);

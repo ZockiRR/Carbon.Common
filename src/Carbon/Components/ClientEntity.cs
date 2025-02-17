@@ -5,14 +5,17 @@ using Time = UnityEngine.Time;
 
 /*
  *
- * Copyright (c) 2022-2024 Carbon Community
- * Copyright (c) 2023 Patrette
- * All rights reserved.
+ * Copyright (c) 2023 Patrette, under the GNU v3 license rights
+ * Copyright (c) 2023-2024 Carbon Community, under the GNU v3 license rights
  *
  */
 
 namespace Carbon.Components;
 
+/// <summary>
+/// Client entity will allow you to manage 'braindead' entity objects which can be selectively networked to specific clients without reducing performance.
+/// The client entities have no specified logic but the class can be inherited and the virtual methods overriden with your own custom logic.
+/// </summary>
 public class ClientEntity : IDisposable
 {
 	#region Statics
@@ -107,13 +110,13 @@ public class ClientEntity : IDisposable
 		{
 			Proto.baseNetworkable.prefabID = value;
 
-			var temporaryWatchers = Facepunch.Pool.GetList<Connection>();
-			temporaryWatchers.AddRange(watchers);
+			var temp = Facepunch.Pool.Get<List<Connection>>();
+			temp.AddRange(watchers);
 
 			KillAll();
-			SpawnAll(temporaryWatchers);
+			SpawnAll(temp);
 
-			Facepunch.Pool.FreeList(ref temporaryWatchers);
+			Facepunch.Pool.FreeUnmanaged(ref temp);
 		}
 	}
 	public NetworkableId ParentID
@@ -137,14 +140,26 @@ public class ClientEntity : IDisposable
 		set => Proto.baseEntity.rot = value;
 	}
 
+	/// <summary>
+	/// Spawns this client-side entity to a specific connected client.
+	/// </summary>
 	public virtual void SpawnFor(Connection connection)
 	{
 		_sendNetworkUpdateImmediate(connection);
 	}
+
+	/// <summary>
+	/// Spawns this client-side entity to a multitude of connected clients.
+	/// </summary>
 	public virtual void SpawnAll(IList<Connection> connections)
 	{
 		_sendNetworkUpdateImmediate(connections);
 	}
+
+	/// <summary>
+	/// Destroys this entity client-side for a specified connection.
+	/// </summary>
+	/// <param name="mode">Destruction mode. Gib or sudden.</param>
 	public virtual void KillFor(Connection connection, BaseNetworkable.DestroyMode mode = BaseNetworkable.DestroyMode.None)
 	{
 		if (watchers.Contains(connection)) watchers.Remove(connection);
@@ -155,6 +170,11 @@ public class ClientEntity : IDisposable
 		writer.UInt8((byte)mode);
 		writer.Send(new SendInfo(connection));
 	}
+
+	/// <summary>
+	/// Destroys this entity client-side for all current client entity watchers.
+	/// </summary>
+	/// <param name="mode">Destruction mode. Gib or sudden.</param>
 	public virtual void KillAll(BaseNetworkable.DestroyMode mode = BaseNetworkable.DestroyMode.None)
 	{
 		using var writer = Net.sv.StartWrite();
@@ -166,10 +186,17 @@ public class ClientEntity : IDisposable
 		watchers.Clear();
 	}
 
+	/// <summary>
+	/// Checks if this client-side entity has a flag assigned.
+	/// </summary>
 	public bool HasFlag(BaseEntity.Flags flag)
 	{
 		return (Flags & flag) == flag;
 	}
+
+	/// <summary>
+	/// Sets a flag (if not already set) and sends it as a network update to all client-side entity watchers.
+	/// </summary>
 	public void SetFlag(BaseEntity.Flags flag, bool wants, bool update = true)
 	{
 		if (wants)
@@ -190,14 +217,22 @@ public class ClientEntity : IDisposable
 			SendNetworkUpdate_Flags();
 		}
 	}
+
+	/// <summary>
+	/// Send a network update to all current watchers of the client-side entity.
+	/// </summary>
 	public virtual void SendNetworkUpdate()
 	{
-		var connections = Facepunch.Pool.GetList<Network.Connection>();
+		var connections = Facepunch.Pool.Get<List<Connection>>();
 		foreach (var connection in watchers) connections.Add(connection);
 
 		_sendNetworkUpdateImmediate(connections);
-		Facepunch.Pool.FreeList(ref connections);
+		Facepunch.Pool.FreeUnmanaged(ref connections);
 	}
+
+	/// <summary>
+	/// Send a network update flags packet to all current watchers of the client-side entity.
+	/// </summary>
 	public virtual void SendNetworkUpdate_Flags()
 	{
 		if (watchers.Count == 0) return;
@@ -208,6 +243,10 @@ public class ClientEntity : IDisposable
 		writer.Int32((int)Flags);
 		writer.Send(new SendInfo(watchers));
 	}
+
+	/// <summary>
+	/// Send a network update position packet to all current watchers of the client-side entity.
+	/// </summary>
 	public virtual void SendNetworkUpdate_Position()
 	{
 		if (watchers.Count == 0) return;
@@ -230,6 +269,9 @@ public class ClientEntity : IDisposable
 		writer.Send(sendInfo);
 	}
 
+	/// <summary>
+	/// Gets fired whenever a client is interacting with the entity client-side. Allowing you to create custom behavior for the entity.
+	/// </summary>
 	public virtual void OnRpc(string rpc, Message message)
 	{
 
@@ -337,6 +379,9 @@ public class ClientEntity : IDisposable
 
 	#endregion
 
+	/// <summary>
+	/// Completely disposes and terminates all logic of this client-side entity.
+	/// </summary>
 	public virtual void Dispose()
 	{
 		if (Proto == null) return;

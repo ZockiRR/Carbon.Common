@@ -1,13 +1,4 @@
-﻿/*
- *
- * Copyright (c) 2022-2024 Carbon Community
- * All rights reserved.
- *
- */
-
-using HarmonyLib;
-
-namespace Carbon.Plugins;
+﻿namespace Carbon.Plugins;
 
 public class CarbonPlugin : RustPlugin
 {
@@ -34,7 +25,6 @@ public class CarbonPlugin : RustPlugin
 
 		return true;
 	}
-
 	public override void IUnload()
 	{
 		UnapplyPatch();
@@ -122,12 +112,12 @@ public class CarbonPlugin : RustPlugin
 		try
 		{
 			_CARBON_PATCH = new HarmonyLib.Harmony(Domain);
-			_CARBON_PATCH.PatchAll(Type.Assembly);
+			_CARBON_PATCH.PatchAll(HookableType.Assembly);
 			return true;
 		}
 		catch (Exception ex)
 		{
-			Logger.Error($"Failed auto-patching Harmony methods", ex);
+			Logger.Error($"Failed auto-patching Harmony methods for '{ToPrettyString()}'", ex);
 			return false;
 		}
 	}
@@ -146,7 +136,7 @@ public class CarbonPlugin : RustPlugin
 		}
 		catch (Exception ex)
 		{
-			Logger.Error($"Failed unpatching Harmony methods", ex);
+			Logger.Error($"Failed un-patching Harmony methods for '{ToPrettyString()}'", ex);
 			return false;
 		}
 	}

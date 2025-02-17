@@ -1,11 +1,4 @@
-﻿/*
- *
- * Copyright (c) 2022-2024 Carbon Community
- * All rights reserved.
- *
- */
-
-namespace Carbon.Core;
+﻿namespace Carbon.Core;
 
 [Serializable]
 public class Defines
@@ -40,7 +33,7 @@ public class Defines
 	internal static string _customLangFolder;
 	internal static string _customModuleFolder;
 	internal static string _customExtensionsFolder;
-	internal static string _customHarmonyFolder;
+	internal static string _customProfilesFolder;
 	internal static string _customLogsFolder;
 	internal static bool _commandLineInitialized;
 
@@ -57,7 +50,7 @@ public class Defines
 		_customModuleFolder = CommandLineEx.GetArgumentResult("-carbon.moduledir");
 		_customExtensionsFolder = CommandLineEx.GetArgumentResult("-carbon.extdir");
 		_customLogsFolder = CommandLineEx.GetArgumentResult("-carbon.logdir");
-		_customHarmonyFolder = CommandLineEx.GetArgumentResult("-carbon.harmonydir");
+		_customProfilesFolder = CommandLineEx.GetArgumentResult("-carbon.profiledir");
 	}
 
 	public static string GetConfigFile()
@@ -175,10 +168,10 @@ public class Defines
 
 		return folder;
 	}
-	public static string GetHarmonyFolder()
+	public static string GetDeveloperFolder()
 	{
 		_initializeCommandLine();
-		var folder = Path.GetFullPath(string.IsNullOrEmpty(_customHarmonyFolder) ? Path.Combine(GetRootFolder(), "harmony") : _customHarmonyFolder);
+		var folder = Path.GetFullPath(Path.Combine(GetRootFolder(), "developer"));
 		Directory.CreateDirectory(folder);
 
 		return folder;
@@ -186,7 +179,15 @@ public class Defines
 	public static string GetManagedFolder()
 	{
 		_initializeCommandLine();
-		var folder = Path.Combine($"{GetRootFolder()}", "managed");
+		var folder = Path.Combine(GetRootFolder(), "managed");
+		Directory.CreateDirectory(folder);
+
+		return folder;
+	}
+	public static string GetHooksFolder()
+	{
+		_initializeCommandLine();
+		var folder = Path.Combine(GetManagedFolder(), "hooks");
 		Directory.CreateDirectory(folder);
 
 		return folder;
@@ -195,6 +196,14 @@ public class Defines
 	{
 		_initializeCommandLine();
 		var folder = Path.GetFullPath(string.IsNullOrEmpty(_customLogsFolder) ? Path.Combine(GetRootFolder(), "logs") : _customLogsFolder);
+		Directory.CreateDirectory(folder);
+
+		return folder;
+	}
+	public static string GetProfilesFolder()
+	{
+		_initializeCommandLine();
+		var folder = Path.GetFullPath(string.IsNullOrEmpty(_customProfilesFolder) ? Path.Combine(GetRootFolder(), "profiles") : _customProfilesFolder);
 		Directory.CreateDirectory(folder);
 
 		return folder;

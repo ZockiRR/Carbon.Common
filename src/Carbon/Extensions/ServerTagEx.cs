@@ -1,37 +1,37 @@
-﻿/*
- *
- * Copyright (c) 2022-2023 Carbon Community 
- * All rights reserved.
- *
- */
-
-namespace Carbon.Extensions;
+﻿namespace Carbon.Extensions;
 
 public static class ServerTagEx
 {
-	public static bool SetRequiredTag(string tag)
+	public static void SetRequiredTag(string tag, bool compact)
 	{
 		var tags = Steamworks.SteamServer.GameTags;
 
-		if (!tags.Contains($",{tag}"))
+		if (compact)
 		{
-			Steamworks.SteamServer.GameTags = $"{tags},{tag}";
-			return true;
+			if (tags.Contains(tag)) return;
+			var indexOf = tags.IndexOf('^');
+
+			Steamworks.SteamServer.GameTags = indexOf > 0 ? tags.Insert(indexOf, tag) : $"{tags}{(tags.EndsWith(",") ? string.Empty : ",")}{tag}";
+			return;
 		}
 
-		return false;
+		if (tags.Contains($",{tag}")) return;
+
+		Steamworks.SteamServer.GameTags = $"{tags},{tag}";
 	}
 
-	public static bool UnsetRequiredTag(string tag)
+	public static void UnsetRequiredTag(string tag, bool compact)
 	{
 		var tags = Steamworks.SteamServer.GameTags;
 
-		if (tags.Contains($",{tag}"))
+		if (compact)
 		{
-			Steamworks.SteamServer.GameTags = tags.Replace($",{tag}", "");
-			return true;
+			if (!tags.Contains(tag)) return;
+			Steamworks.SteamServer.GameTags = tags.Replace(tag, string.Empty);
+			return;
 		}
 
-		return false;
+		if (!tags.Contains($",{tag}")) return;
+		Steamworks.SteamServer.GameTags = tags.Replace($",{tag}", string.Empty);
 	}
 }

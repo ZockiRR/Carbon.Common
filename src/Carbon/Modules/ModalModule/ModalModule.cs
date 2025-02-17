@@ -1,14 +1,4 @@
-﻿/*
- *
- * Copyright (c) 2022-2023 Carbon Community
- * All rights reserved.
- *
- */
-
-using System.Windows.Controls;
-using API.Abstracts;
-using ConVar;
-using Oxide.Game.Rust.Cui;
+﻿using Oxide.Game.Rust.Cui;
 using static Carbon.Components.CUI;
 using static ConsoleSystem;
 
@@ -364,7 +354,7 @@ public partial class ModalModule : CarbonModule<EmptyModuleConfig, EmptyModuleDa
 
 				case Modal.Field.FieldTypes.RustColor:
 				case Modal.Field.FieldTypes.HexColor:
-					Community.Runtime.CorePlugin.NextFrame(() =>
+					Community.Runtime.Core.NextFrame(() =>
 					{
 						ColorPicker.Open(ap.Player, (hexColor, rustColor, alpha) =>
 						{

@@ -1,21 +1,15 @@
 ﻿using Facepunch;
 using Newtonsoft.Json;
+using ProtoBuf;
 using Formatting = Newtonsoft.Json.Formatting;
-
-/*
- *
- * Copyright (c) 2022-2023 Carbon Community
- * All rights reserved.
- *
- */
 
 namespace Oxide.Game.Rust.Cui;
 
 public static class CuiHelper
 {
-	public static Dictionary<BasePlayer, HashSet<string>> ActivePanels { get; internal set; } = new();
+	public static Dictionary<BasePlayer, HashSet<string>> ActivePanels { get; } = new();
 
-	internal static JsonSerializerSettings _cuiSettings = new()
+	private static JsonSerializerSettings _cuiSettings = new()
 	{
 		DefaultValueHandling = DefaultValueHandling.Ignore
 	};
@@ -30,23 +24,28 @@ public static class CuiHelper
 		return panels;
 	}
 
-	public static void DestroyActivePanelList(BasePlayer player, string[] except = null)
+	public static int DestroyActivePanelList(BasePlayer player, string[] except = null)
 	{
-		var temp = Pool.GetList<string>();
+		var temp = Pool.Get<List<string>>();
 		temp.AddRange(GetActivePanelList(player));
 
-		foreach (var element in temp.Where(x => except == null || except.Length == 0 ? true : !except.Any(y => x.StartsWith(y))))
+		var count = 0;
+
+		foreach (var element in temp.Where(x => except == null || except.Length == 0 || !except.Any(y => x.StartsWith(y))))
 		{
 			DestroyUi(player, element);
+			count++;
 		}
 
-		Pool.FreeList(ref temp);
+		Pool.FreeUnmanaged(ref temp);
+		return count;
 	}
 
 	public static string ToJson(List<CuiElement> elements, bool format = false)
 	{
 		return JsonConvert.SerializeObject(elements, format ? Formatting.Indented : Formatting.None, _cuiSettings).Replace("\\n", "\n");
 	}
+
 	public static string ToJson(CuiElement element, bool format = false)
 	{
 		return JsonConvert.SerializeObject(element, format ? Formatting.Indented : Formatting.None, _cuiSettings).Replace("\\n", "\n");
@@ -64,7 +63,7 @@ public static class CuiHelper
 		}
 
 		// CanUseUI
-		if (HookCaller.CallStaticHook(1318053248, player, json) != null) return false;
+		if (HookCaller.CallStaticHook(1307002116, player, json) != null) return false;
 
 		CommunityEntity.ServerInstance.ClientRPC(RpcTarget.Player("AddUI", player), json);
 		return true;
@@ -80,7 +79,7 @@ public static class CuiHelper
 		var json = ToJson(elements);
 
 		// CanUseUI
-		if (HookCaller.CallStaticHook(1318053248, player, json) != null) return false;
+		if (HookCaller.CallStaticHook(1307002116, player, json) != null) return false;
 
 		if (elements != null && elements.Count > 0)
 		{
@@ -101,7 +100,7 @@ public static class CuiHelper
 			if (panelList.Contains(name)) panelList.Remove(name);
 
 			// OnDestroyUI
-			HookCaller.CallStaticHook(2982238573, player, name);
+			HookCaller.CallStaticHook(503981600, player, name);
 			CommunityEntity.ServerInstance.ClientRPC(RpcTarget.Player("DestroyUI", player), name);
 			return true;
 		}

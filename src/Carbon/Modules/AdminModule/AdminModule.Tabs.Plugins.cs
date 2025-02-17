@@ -1,12 +1,5 @@
 ﻿#if !MINIMAL
 
-/*
- *
- * Copyright (c) 2022-2023 Carbon Community
- * All rights reserved.
- *
- */
-
 using System.IO.Compression;
 using System.Net;
 using System.Text;
@@ -19,13 +12,13 @@ using Timer = Oxide.Plugins.Timer;
 
 namespace Carbon.Modules;
 
-public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
+public partial class AdminModule
 {
 	public static class PluginsTab
 	{
 		public enum VendorTypes
 		{
-			Local,
+			Installed,
 			Codefling,
 			uMod,
 		}
@@ -40,38 +33,47 @@ public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
 			Owned
 		}
 
-		public static bool DropdownShow { get; set; }
-		public static string[] DropdownOptions { get; } = new[] { "A-Z", "Price", "Author", "Installed", "Pending Update", "Favourites", "Owned" };
+		public static bool DropdownShow;
+		public static string[] DropdownOptions { get; } =
+		[
+			"A-Z",
+			"Price",
+			"Author",
+			"Installed",
+			"Pending Update",
+			"Favourites",
+			"Owned"
+		];
 		public static PlayerSession.Page PlaceboPage { get; } = new PlayerSession.Page();
-		public static List<string> TagFilter { get; set; } = new();
-		public static string[] PopularTags { get; } = new[]
-		{
-				"gui",
-				"admin",
-				"moderation",
-				"chat",
-				"building",
-				"discord",
-				"libraries",
-				"loot",
-				"pve",
-				"event",
-				"logging",
-				"anti-cheat",
-				"economics",
-				"npc",
-				"info",
-				"limitations",
-				"statistics",
-				"monuments",
-				"seasonal",
-				"banan",
-				"peanus"
-		};
+		public static List<string> TagFilter = new();
+		public static string[] PopularTags { get; } =
+		[
+			"gui",
+			"admin",
+			"moderation",
+			"chat",
+			"building",
+			"discord",
+			"libraries",
+			"loot",
+			"pve",
+			"event",
+			"logging",
+			"anti-cheat",
+			"economics",
+			"npc",
+			"info",
+			"limitations",
+			"statistics",
+			"monuments",
+			"seasonal",
+			"banan",
+			"peanus"
+		];
 
-		public static Vendor CodeflingInstance { get; set; }
-		public static Vendor uModInstance { get; set; }
-		public static Vendor LocalInstance { get; set; }
+		public static Vendor CodeflingInstance;
+		public static Vendor uModInstance;
+		public static Vendor LocalInstance;
 
 		public static Vendor GetVendor(VendorTypes vendor)
 		{
@@ -83,7 +85,7 @@ public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
 				case VendorTypes.uMod:
 					return uModInstance;
 
-				case VendorTypes.Local:
+				case VendorTypes.Installed:
 					return LocalInstance;
 			}
 
@@ -94,9 +96,9 @@ public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
 		{
 			OsEx.Folder.Create(Path.Combine(Defines.GetScriptsFolder(), "backups"));
 
-			var tab = new Tab("plugins", "Plugins", Community.Runtime.CorePlugin, (ap, t) =>
+			var tab = new Tab("plugins", "Plugins", Community.Runtime.Core, (ap, t) =>
 			{
-				ap.SetStorage(t, "selectedplugin", (Plugin)null);
+				ap.SetStorage(t, "selectedplugin", (Plugin)default);
 				LocalInstance?.Refresh();
 			}, "plugins.use")
 			{
@@ -123,7 +125,7 @@ public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
 				});
 			}
 
-			LocalInstance = new Local();
+			LocalInstance = new Installed();
 			LocalInstance.Refresh();
 
 			ServerOwner.Load();
@@ -139,8 +141,8 @@ public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
 		{
 			maxPages = 0;
 
-			var resultList = Facepunch.Pool.GetList<Plugin>();
-			var customList = Facepunch.Pool.GetList<Plugin>();
+			var resultList = Facepunch.Pool.Get<List<Plugin>>();
+			var customList = Facepunch.Pool.Get<List<Plugin>>();
 
 			using (TimeMeasure.New("GetPluginsFromVendor"))
 			{
@@ -276,12 +278,12 @@ public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
 				}
 				catch (Exception ex)
 				{
-					Facepunch.Pool.FreeList(ref resultList);
+					Facepunch.Pool.FreeUnmanaged(ref resultList);
 
 					Logger.Error($"Failed getting plugins.", ex);
 				}
 
-				Facepunch.Pool.FreeList(ref customList);
+				Facepunch.Pool.FreeUnmanaged(ref customList);
 			}
 
 			return resultList;
@@ -291,12 +293,12 @@ public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
 		{
 			var plugins = GetPlugins(vendor, tab, ap);
 
-			var images = Facepunch.Pool.GetList<string>();
-			var imagesSafe = Facepunch.Pool.GetList<string>();
+			var images = Facepunch.Pool.Get<List<string>>();
+			var imagesSafe = Facepunch.Pool.Get<List<string>>();
 
 			foreach (var element in plugins)
 			{
-				if (element.NoImage()) continue;
+				if (element.HasNoImage()) continue;
 
 				if (element.HasInvalidImage())
 				{
@@ -309,22 +311,22 @@ public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
 
 			var eraseAllBeforehand = false;
 
-			if (images.Count > 0) Singleton.ImageDatabase.QueueBatchCallback(vendor.IconScale, eraseAllBeforehand, result => { }, images);
-			if (imagesSafe.Count > 0) Singleton.ImageDatabase.QueueBatch(vendor.SafeIconScale, eraseAllBeforehand, imagesSafe);
+			if (images.Count > 0) Singleton.ImageDatabase.QueueBatch(eraseAllBeforehand, images);
+			if (imagesSafe.Count > 0) Singleton.ImageDatabase.QueueBatch(eraseAllBeforehand, imagesSafe);
 
-			Facepunch.Pool.FreeList(ref plugins);
-			Facepunch.Pool.FreeList(ref images);
-			Facepunch.Pool.FreeList(ref imagesSafe);
+			Facepunch.Pool.FreeUnmanaged(ref plugins);
+			Facepunch.Pool.FreeUnmanaged(ref images);
+			Facepunch.Pool.FreeUnmanaged(ref imagesSafe);
 		}
 
 		public static void Draw(CUI cui, CuiElementContainer container, string parent, Tab tab, PlayerSession ap)
 		{
-			ap.SetDefaultStorage(tab, "vendor", "Local");
+			ap.SetDefaultStorage(tab, "vendor", VendorTypes.Installed.ToString());
 
 			var header = cui.CreatePanel(container, parent, "0.2 0.2 0.2 0.5",
 				xMin: 0f, xMax: 1f, yMin: 0.95f, yMax: 1f);
 
-			var vendorName = ap.GetStorage(tab, "vendor", "Local");
+			var vendorName = ap.GetStorage(tab, "vendor", VendorTypes.Installed.ToString());
 			var vendor = GetVendor((VendorTypes)Enum.Parse(typeof(VendorTypes), vendorName));
 
 			var vendors = Enum.GetNames(typeof(VendorTypes));
@@ -364,14 +366,21 @@ public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
 					cui.CreateImage(container, card, "glow", "1 1 1 0.5", OxMin: -20, OxMax: 20, OyMin: -20, OyMax: 20);
 				}
 
-				if (plugin.NoImage() || Singleton.DataInstance.HidePluginIcons)
+				if (plugin.HasNoImage() || Singleton.DataInstance.HidePluginIcons)
 				{
-					cui.CreateImage(container, card, vendor.Logo, "0.2 0.2 0.2 0.4", xMin: 0.2f, xMax: 0.8f, yMin: 0.2f + vendor.LogoRatio, yMax: 0.8f - vendor.LogoRatio);
+					cui.CreatePanel(container, card, "0.2 0.2 0.2 0.5");
+					cui.CreateImage(container, card, vendor.Logo, "0.2 0.2 0.2 0.85", xMin: 0.2f, xMax: 0.8f, yMin: 0.2f + vendor.LogoRatio, yMax: 0.8f - vendor.LogoRatio);
 				}
 				else
 				{
-					if (Singleton.ImageDatabase.GetImage(plugin.Thumbnail) != 0) cui.CreateImage(container, card, plugin.Thumbnail, plugin.HasInvalidImage() ? vendor.SafeIconScale : vendor.IconScale, "1 1 1 1");
-					else cui.CreateClientImage(container, card, plugin.Thumbnail, "1 1 1 1");
+					if (Singleton.ImageDatabase.HasImage(plugin.ImageThumbnail))
+					{
+						cui.CreateImage(container, card, plugin.ImageThumbnail, "1 1 1 1");
+					}
+					else
+					{
+						cui.CreateClientImage(container, card, plugin.ImageThumbnail, "1 1 1 1");
+					}
 				}
 
 				var cardTitle = cui.CreatePanel(container, card, "0 0 0 0.9", yMax: 0.25f);
@@ -421,7 +430,7 @@ public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
 				xMin: 0f, xMax: 0.8f, yMin: 0.89f, yMax: 0.94f);
 
 			var drop = cui.CreatePanel(container, sidebar, "0 0 0 0", yMin: 0.95f, OxMin: -155);
-			Singleton.TabPanelDropdown(cui, PlaceboPage, container, drop, null, $"pluginbrowser.changesetting filter_dd", 1, 0, (int)ap.GetStorage(tab, "filter", FilterTypes.None), DropdownOptions, null, 0, DropdownShow);
+			Singleton.TabPanelDropdown(cui, PlaceboPage, container, drop, null, $"pluginbrowser.changesetting filter_dd", 1, 0, (int)ap.GetStorage(tab, "filter", FilterTypes.None), DropdownOptions, null, DropdownShow);
 
 			const float topbarYScale = 0.1f;
 			cui.CreateText(container, topbar, "1 1 1 1", plugins.Count > 0 ? $"/ {maxPages + 1:n0}" : "NONE", plugins.Count > 0 ? 10 : 8, xMin: plugins.Count > 0 ? 0.925f : 0.92f, xMax: 0.996f, align: TextAnchor.MiddleLeft);
@@ -465,20 +474,21 @@ public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
 				cui.CreateProtectedButton(container, user, auth.IsLoggedIn ? "0.8 0.1 0 0.8" : "0.1 0.8 0 0.8", "1 1 1 0.5", auth.IsLoggedIn ? "<b>LOGOUT</b>" : "<b>LOGIN</b>", 8, xMin: 0.75f, xMax: 0.975f, command: "pluginbrowser.login");
 			}
 
-			var isLocal = vendor is Local;
+			var isInstalled = vendor is Installed;
 			var searchQuery = ap.GetStorage<string>(tab, "search");
 			var search = cui.CreatePanel(container, topbar, "0 0 0 0", xMin: 0.6f, xMax: 0.855f, yMin: 0f, OyMax: -0.5f);
 			cui.CreateProtectedInputField(container, search, string.IsNullOrEmpty(searchQuery) ? "0.8 0.8 0.8 0.6" : "1 1 1 1", string.IsNullOrEmpty(searchQuery) ? "Search..." : searchQuery, 10, 20, false, xMin: 0.06f, align: TextAnchor.MiddleLeft, needsKeyboard: Singleton.HandleEnableNeedsKeyboard(ap), command: "pluginbrowser.search  ");
 			cui.CreateProtectedButton(container, search, string.IsNullOrEmpty(searchQuery) ? "0.2 0.2 0.2 0.8" : "#d43131", "1 1 1 0.6", "X", 10, xMin: 0.95f, yMin: topbarYScale, yMax: 1f - topbarYScale, OxMin: -30, OxMax: -22.5f, command: "pluginbrowser.search  ");
 
-			var reloadButton = cui.CreateProtectedButton(container, search, isLocal ? "0.2 0.2 0.2 0.4" : "0.2 0.2 0.2 0.8", "1 1 1 0.6", string.Empty, 0, xMin: 0.9f, xMax: 1, yMin: topbarYScale, yMax: 1f - topbarYScale, command: "pluginbrowser.refreshvendor");
+			var reloadButton = cui.CreateProtectedButton(container, search, isInstalled ? "0.2 0.2 0.2 0.4" : "0.2 0.2 0.2 0.8", "1 1 1 0.6", string.Empty, 0, xMin: 0.9f, xMax: 1, yMin: topbarYScale, yMax: 1f - topbarYScale, command: "pluginbrowser.refreshvendor");
 			cui.CreateImage(container, reloadButton, "reload", "1 1 1 0.4", xMin: 0.225f, xMax: 0.775f, yMin: 0.25f, yMax: 0.75f);
 
 			if (TagFilter.Contains("peanus")) cui.CreateClientImage(container, grid, "https://media.discordapp.net/attachments/1078801277565272104/1085062151221293066/15ox1d_1.jpg?width=827&height=675", "1 1 1 1", xMax: 0.8f);
 			if (TagFilter.Contains("banan")) cui.CreateClientImage(container, grid, "https://upload.wikimedia.org/wikipedia/commons/2/23/Banan.jpg", "1 1 1 1", xMax: 0.8f);
 
 			var selectedPlugin = ap.GetStorage<Plugin>(tab, "selectedplugin");
-			if (selectedPlugin != null)
+
+			if (selectedPlugin.IsValid)
 			{
 				vendor.CheckMetadata(selectedPlugin.Id, () => { Singleton.Draw(ap.Player); });
 
@@ -487,11 +497,21 @@ public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
 
 				var image = cui.CreatePanel(container, parent, "0 0 0 0.5", xMin: 0.08f, xMax: 0.45f, yMin: 0.15f, yMax: 0.85f);
 
-				if (selectedPlugin.NoImage()) cui.CreateImage(container, image, vendor.Logo, "0.2 0.2 0.2 0.4", xMin: 0.2f, xMax: 0.8f, yMin: 0.2f + vendor.LogoRatio, yMax: 0.8f - vendor.LogoRatio);
+				if (selectedPlugin.HasNoImage())
 				{
-					if (Singleton.ImageDatabase.GetImage(selectedPlugin.Image) == 0) cui.CreateClientImage(container, image, selectedPlugin.Image, "1 1 1 1", xMin: 0.05f, xMax: 0.95f, yMin: 0.05f, yMax: 0.95f);
-					else cui.CreateImage(container, image, selectedPlugin.Image, selectedPlugin.HasInvalidImage() ? vendor.SafeIconScale : vendor.IconScale, "1 1 1 1", xMin: 0.05f, xMax: 0.95f, yMin: 0.05f, yMax: 0.95f);
+					cui.ImageDatabase.Queue(selectedPlugin.Image);
+					cui.CreateImage(container, image, vendor.Logo, "0.2 0.2 0.2 0.4", xMin: 0.2f, xMax: 0.8f, yMin: 0.2f + vendor.LogoRatio, yMax: 0.8f - vendor.LogoRatio);
 				}
+				else if (!cui.ImageDatabase.HasImage(selectedPlugin.Image))
+				{
+					cui.ImageDatabase.Queue(selectedPlugin.Image);
+					cui.CreateClientImage(container, image, selectedPlugin.Image, "1 1 1 1", xMin: 0.05f, xMax: 0.95f, yMin: 0.05f, yMax: 0.95f);
+				}
+				else
+				{
+					cui.CreateImage(container, image, selectedPlugin.Image, "1 1 1 1", xMin: 0.05f, xMax: 0.95f, yMin: 0.05f, yMax: 0.95f);
+				}
+
 				var pluginName = cui.CreateText(container, mainPanel, "1 1 1 1", selectedPlugin.Name, 25, xMin: 0.505f, yMax: 0.8f, align: TextAnchor.UpperLeft, font: CUI.Handler.FontTypes.RobotoCondensedBold);
 				cui.CreateText(container, mainPanel, "1 1 1 0.5", $"by <b>{(selectedPlugin.ExistentPlugin != null ? selectedPlugin.ExistentPlugin.Author : selectedPlugin.Author)}</b>  <b>•</b>  v{selectedPlugin.Version}  <b>•</b>  Updated on {selectedPlugin.UpdateDate}  <b>•</b>  {selectedPlugin.DownloadCount:n0} downloads", 11, xMin: 0.48f, yMax: 0.74f, align: TextAnchor.UpperLeft);
 				cui.CreateText(container, mainPanel, "1 1 1 0.3", $"{(!selectedPlugin.HasLookup ? "Fetching metdata..." : $"{selectedPlugin.Description}\n\n{selectedPlugin.Changelog}")}", 11, xMin: 0.48f, xMax: 0.85f, yMax: 0.635f, align: TextAnchor.UpperLeft);
@@ -516,7 +536,7 @@ public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
 				var tagOffset = 0f;
 				var tagSpacing = 0.012f;
 				var tags = cui.CreatePanel(container, mainPanel, "0 0 0 0", xMin: 0.48f, xMax: 0.8f, yMin: 0.66f, yMax: 0.7f);
-				var tempTags = Facepunch.Pool.GetList<string>();
+				var tempTags = Facepunch.Pool.Get<List<string>>();
 				var counter = 0;
 
 				if (selectedPlugin.Tags != null && selectedPlugin.Tags.Count() > 0)
@@ -543,7 +563,7 @@ public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
 					tagOffset += size + tagSpacing;
 				}
 
-				Facepunch.Pool.FreeList(ref tempTags);
+				Facepunch.Pool.FreeUnmanaged(ref tempTags);
 
 				#endregion
 
@@ -622,7 +642,7 @@ public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
 						}
 					}
 
-					if (vendor is not Local)
+					if (vendor is not Installed)
 					{
 						if (isAdmin || selectedPlugin.Owned || !selectedPlugin.IsPaid() || selectedPlugin.IsInstalled())
 						{
@@ -672,7 +692,6 @@ public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
 
 					var image = cui.CreatePanel(container, parent, "1 1 1 1", xMin: 0.12f, xMax: 0.45f, yMin: 0.2f, yMax: 0.8f);
 
-					cui.QueueImages(vendor.LogoEnumerable);
 					var code = string.Format(auth.AuthRequestEndpoint, auth.AuthCode);
 					var qr = cui.CreateQRCodeImage(container, image, code,
 						brandUrl: vendor.Logo,
@@ -724,7 +743,7 @@ public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
 				}
 			}
 
-			Facepunch.Pool.FreeList(ref plugins);
+			Facepunch.Pool.FreeUnmanaged(ref plugins);
 		}
 
 		#region Vendors
@@ -737,30 +756,29 @@ public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
 			public virtual string Type { get; }
 			public virtual string Url { get; }
 			public virtual string Logo { get; }
-			public IEnumerable<string> LogoEnumerable;
 			public virtual float LogoRatio { get; }
+			public virtual string Hero { get; }
 
-			public virtual float IconScale { get; }
-			public virtual float SafeIconScale { get; }
+			public virtual bool CanRefresh { get; } = true;
 
 			public virtual string BarInfo { get; }
 
-			public IEnumerable<Plugin> PriceData { get; set; }
-			public IEnumerable<Plugin> AuthorData { get; set; }
-			public IEnumerable<Plugin> InstalledData { get; set; }
-			public IEnumerable<Plugin> OutOfDateData { get; set; }
-			public IEnumerable<Plugin> OwnedData { get; set; }
-			public IEnumerable<string> PopularTags { get; set; }
+			public IEnumerable<Plugin> PriceData;
+			public IEnumerable<Plugin> AuthorData;
+			public IEnumerable<Plugin> InstalledData;
+			public IEnumerable<Plugin> OutOfDateData;
+			public IEnumerable<Plugin> OwnedData;
+			public IEnumerable<string> PopularTags;
 
 			public virtual string ListEndpoint { get; }
 			public virtual string DownloadEndpoint { get; }
 			public virtual string PluginLookupEndpoint { get; }
 
 			[ProtoMember(1)]
-			public List<Plugin> FetchedPlugins { get; set; } = new();
+			public List<Plugin> FetchedPlugins = new();
 
 			[ProtoMember(2)]
-			public long LastTick { get; set; }
+			public long LastTick;
 
 			public abstract void Refresh();
 			public abstract void FetchList(Action<Vendor> callback = null);
@@ -811,29 +829,29 @@ public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
 		public class LoggedInUser
 		{
 			[ProtoMember(1)]
-			public int Id { get; set; }
+			public int Id;
 			[ProtoMember(2)]
-			public string Authority { get; set; }
+			public string Authority;
 			[ProtoMember(3)]
-			public string DisplayName { get; set; }
+			public string DisplayName;
 			[ProtoMember(4)]
-			public string AvatarUrl { get; set; }
+			public string AvatarUrl;
 			[ProtoMember(5)]
-			public string AccessTokenEncoded { get; set; }
+			public string AccessTokenEncoded;
 			[ProtoMember(6)]
-			public string CoverUrl { get; set; }
+			public string CoverUrl;
 
 			[ProtoMember(500)]
-			public bool PendingAccessToken { get; set; }
+			public bool PendingAccessToken;
 			[ProtoMember(501)]
-			public RequestResult PendingResult { get; set; }
+			public RequestResult PendingResult;
 			[ProtoMember(502)]
-			public bool IsAdmin { get; set; }
+			public bool IsAdmin;
 
 			[ProtoMember(600)]
 			public List<string> OwnedFiles { get; } = new();
 
-			public string AccessToken { get; set; }
+			public string AccessToken;
 
 			public enum RequestResult
 			{
@@ -858,9 +876,7 @@ public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
 			public override string Url => "https://codefling.com";
 			public override string Logo => "cflogo";
 			public override float LogoRatio => 0f;
-
-			public override float IconScale => 0.4f;
-			public override float SafeIconScale => 0.2f;
+			public override string Hero => "cf_hero";
 
 			public override string BarInfo => $"{FetchedPlugins.Count(x => !x.IsPaid()):n0} free, {FetchedPlugins.Count(x => x.IsPaid()):n0} paid";
 
@@ -876,12 +892,7 @@ public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
 			{
 				if (FetchedPlugins == null) return;
 
-				if (LogoEnumerable == null)
-				{
-					LogoEnumerable = new[] { Logo };
-				}
-
-				var plugins = Community.Runtime.CorePlugin.plugins.GetAll();
+				var plugins = Community.Runtime.Core.plugins.GetAll();
 				var auth = this as IVendorAuthenticated;
 
 				foreach (var plugin in FetchedPlugins)
@@ -889,13 +900,13 @@ public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
 					try
 					{
 						var name = Path.GetFileName(plugin.File);
-						plugin.Owned = auth.User != null && auth.User.OwnedFiles.Contains(plugin.Id);
+						plugin.SetOwned(auth.User != null && auth.User.OwnedFiles.Contains(plugin.Id));
 
 						foreach (var existentPlugin in plugins)
 						{
 							if (existentPlugin.FileName == name)
 							{
-								plugin.ExistentPlugin = (RustPlugin)existentPlugin;
+								plugin.SetExistentPlugin((RustPlugin)existentPlugin);
 								break;
 							}
 						}
@@ -915,7 +926,7 @@ public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
 				OutOfDateData = FetchedPlugins.Where(x => x.Status == Status.Approved).Where(x => x.IsInstalled() && !x.IsUpToDate());
 				OwnedData = FetchedPlugins.Where(x => x.Owned);
 
-				var tags = Facepunch.Pool.GetList<string>();
+				var tags = Facepunch.Pool.Get<List<string>>();
 				foreach (var plugin in FetchedPlugins)
 				{
 					if (plugin.Tags == null || plugin.Tags.Count() == 0) continue;
@@ -931,23 +942,35 @@ public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
 					}
 				}
 				PopularTags = tags;
-				Facepunch.Pool.FreeList(ref tags);
+				Facepunch.Pool.FreeUnmanaged(ref tags);
 			}
 			public override void FetchList(Action<Vendor> callback = null)
 			{
-				Community.Runtime.CorePlugin.webrequest.Enqueue(ListEndpoint, null, (error, data) =>
+				Community.Runtime.Core.webrequest.Enqueue(ListEndpoint, null, (error, data) =>
 				{
+					if (error != 200)
+					{
+						Logger.Log($"[{Type}] Failed fetching vendor. Error code {error}!");
+						return;
+					}
+
 					FetchedPlugins.Clear();
-					var plugins = Community.Runtime.CorePlugin.plugins.GetAll();
+					var plugins = Community.Runtime.Core.plugins.GetAll();
 
 					ParseData(data, false, false);
 
-					Community.Runtime.CorePlugin.webrequest.Enqueue(List2Endpoint, null, (error, data) =>
+					Community.Runtime.Core.webrequest.Enqueue(List2Endpoint, null, (error, data) =>
 					{
+						if (error != 200)
+						{
+							Logger.Error($"[{Type}] Failed parsing data for vendor. Error code {error}!");
+							return;
+						}
+
 						ParseData(data, true, true);
 
 						VersionCheck();
-					}, Community.Runtime.CorePlugin);
+					}, Community.Runtime.Core);
 
 					void ParseData(string data, bool doSave, bool insert)
 					{
@@ -967,11 +990,12 @@ public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
 									Description = token["description"]?.ToString().Replace(_backSlashes, string.Empty),
 									Version = token["version"]?.ToString(),
 									OriginalPrice = price == null || !price.HasValues ? "FREE" : price["USD"]?.ToString(),
+									Date = token["date"]?.ToString(),
 									UpdateDate = token["updated"]?.ToString(),
 									Changelog = token["changelog"]?.ToString().Replace(_backSlashes, string.Empty),
 									File = token["fileName"]?.ToString(),
-									Image = token["primaryScreenshot"]?.ToString(),
-									Thumbnail = token["thumbnailScreenshot"]?.ToString(),
+									Image = $"https://codefling.com/cdn-cgi/image/width=1250,height=1250,quality=100,blur=25,fit=cover,format=jpeg/{token["primaryScreenshot"]?.ToString()}",
+									ImageThumbnail = $"https://codefling.com/cdn-cgi/image/width=246,height=246,quality=75,fit=cover,format=jpeg/{token["primaryScreenshot"]?.ToString()}",
 									Tags = token["tags"]?.Select(x => x.ToString()),
 									DownloadCount = (token["downloads"]?.ToString().ToInt()).GetValueOrDefault(),
 									// Dependencies = token["file_depends"]?.ToString().Split(),
@@ -981,8 +1005,10 @@ public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
 									HasLookup = true
 								};
 
-								var date = DateTimeOffset.FromUnixTimeSeconds(plugin.UpdateDate.ToLong());
-								plugin.UpdateDate = date.UtcDateTime.ToString();
+								var updateDate = DateTimeOffset.FromUnixTimeSeconds(plugin.UpdateDate.ToLong());
+								var date = DateTimeOffset.FromUnixTimeSeconds(plugin.Date.ToLong());
+								plugin.UpdateDate = updateDate.UtcDateTime.ToString();
+								plugin.Date = date.UtcDateTime.ToString();
 
 								try { plugin.Description = plugin.Description.TrimStart('\t').Replace("\t", "\n").Split('\n')[0]; } catch { }
 
@@ -1013,7 +1039,7 @@ public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
 							Logger.Error($" Couldn't fetch Codefling API to get the plugins list. Most likely because it's down.", ex);
 						}
 					}
-				}, Community.Runtime.CorePlugin);
+				}, Community.Runtime.Core);
 			}
 			public override void Download(string id, Action onTimeout = null)
 			{
@@ -1021,7 +1047,7 @@ public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
 				plugin.IsBusy = true;
 				plugin.DownloadCount++;
 
-				var core = Community.Runtime.CorePlugin;
+				var core = Community.Runtime.Core;
 
 				core.timer.In(2f, () =>
 				{
@@ -1034,7 +1060,6 @@ public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
 
 				if (IsLoggedIn)
 				{
-
 					var extension = Path.GetExtension(plugin.File);
 
 					switch (extension)
@@ -1053,9 +1078,8 @@ public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
 								var name = jobject["files"][0]["name"].ToString();
 								var file = jobject["files"][0]["url"].ToString();
 								var path = Path.Combine(Defines.GetScriptsFolder(), name);
-								jobject = null;
 
-								core.webrequest.EnqueueData(file, null, (error, source) =>
+								core.webrequest.EnqueueData(file, null, (_, source) =>
 								{
 									plugin.IsBusy = false;
 
@@ -1144,10 +1168,10 @@ public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
 								var jobject = JObject.Parse(source);
 								var name = jobject["files"][0]["name"].ToString();
 								var file = jobject["files"][0]["url"].ToString();
-								var path = Path.Combine(Defines.GetScriptsFolder(), name);
+								var path = Path.Combine(Defines.GetScriptsFolder(), plugin.File);
 								jobject = null;
 
-								core.webrequest.Enqueue(file, null, (error, source) =>
+								core.webrequest.Enqueue(file, null, (_, source) =>
 								{
 									plugin.IsBusy = false;
 
@@ -1166,6 +1190,12 @@ public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
 
 					core.webrequest.Enqueue(url, null, (error, source) =>
 					{
+						if (error != 200)
+						{
+							Logger.Error($"[{Type}] Failed downloading item '{plugin.Name} by {plugin.Author}'. Error code {error}!");
+							return;
+						}
+
 						plugin.IsBusy = false;
 
 						if (!source.StartsWith("<!DOCTYPE html>"))
@@ -1193,7 +1223,7 @@ public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
 
 			#region Auth
 
-			[ProtoBuf.ProtoMember(50, IsRequired = false)]
+			[ProtoMember(50, IsRequired = false)]
 			public LoggedInUser User { get; set; }
 
 			public string AuthRequestEndpoint => "https://codefling.com/auth/?pin={0}";
@@ -1209,7 +1239,7 @@ public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
 
 			public void Validate(PlayerSession session, Action onComplete)
 			{
-				var core = Community.Runtime.CorePlugin;
+				var core = Community.Runtime.Core;
 
 				ValidationTimer = core.timer.Every(AuthValidationCheckRate, () =>
 				{
@@ -1225,6 +1255,8 @@ public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
 
 					core.webrequest.Enqueue(url, null, (code, result) =>
 					{
+						User ??= new();
+
 						switch (code)
 						{
 							case 401:
@@ -1243,14 +1275,13 @@ public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
 								User.AccessTokenEncoded = Convert.ToBase64String(Encoding.UTF8.GetBytes(User.AccessToken));
 								ValidationTimer.Destroy();
 								ValidationTimer = null;
-								jobject = null;
 								_headers[AuthHeader.Key.ToString()] = string.Format(AuthHeader.Value, User.AccessToken);
+								Analytics.codefling_login();
 
 								User.PendingResult = LoggedInUser.RequestResult.Complete;
 								onComplete?.Invoke();
 								break;
 						}
-
 					}, null);
 				});
 			}
@@ -1258,7 +1289,7 @@ public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
 			{
 				if (!IsLoggedIn) return;
 
-				var core = Community.Runtime.CorePlugin;
+				var core = Community.Runtime.Core;
 				var authHeader = AuthHeader;
 				var headers = new Dictionary<string, string>()
 				{
@@ -1373,9 +1404,8 @@ public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
 			public override string Url => "https://umod.org";
 			public override string Logo => "umodlogo";
 			public override float LogoRatio => 0.2f;
+			public override string Hero => "umod_hero";
 
-			public override float IconScale => 1f;
-			public override float SafeIconScale => 1f;
 
 			public override string BarInfo => $"{FetchedPlugins.Count:n0} free";
 
@@ -1387,12 +1417,8 @@ public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
 			{
 				if (FetchedPlugins == null) return;
 
-				if (LogoEnumerable == null)
-				{
-					LogoEnumerable = new[] { Logo };
-				}
-
-				var plugins = Community.Runtime.CorePlugin.plugins.GetAll();
+				var plugins = Facepunch.Pool.Get<List<RustPlugin>>();
+				Community.Runtime.Core.plugins.GetAllNonAlloc(plugins);
 
 				foreach (var plugin in FetchedPlugins)
 				{
@@ -1402,14 +1428,13 @@ public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
 					{
 						if (existentPlugin.FileName == name)
 						{
-							plugin.ExistentPlugin = (RustPlugin)existentPlugin;
+							plugin.SetExistentPlugin(existentPlugin);
 							break;
 						}
 					}
 				}
 
-				Array.Clear(plugins, 0, plugins.Length);
-				plugins = null;
+				Facepunch.Pool.FreeUnmanaged(ref plugins);
 
 				PriceData = FetchedPlugins.OrderBy(x => x.OriginalPrice);
 				AuthorData = FetchedPlugins.OrderBy(x => x.Author);
@@ -1417,7 +1442,7 @@ public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
 				OutOfDateData = FetchedPlugins.Where(x => x.IsInstalled() && !x.IsUpToDate());
 				OwnedData = FetchedPlugins.Where(x => x.Owned);
 
-				var tags = Facepunch.Pool.GetList<string>();
+				var tags = Facepunch.Pool.Get<List<string>>();
 				foreach (var plugin in FetchedPlugins)
 				{
 					foreach (var tag in plugin.Tags)
@@ -1431,7 +1456,7 @@ public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
 					}
 				}
 				PopularTags = tags;
-				Facepunch.Pool.FreeList(ref tags);
+				Facepunch.Pool.FreeUnmanaged(ref tags);
 			}
 			public override void FetchList(Action<Vendor> callback = null)
 			{
@@ -1439,8 +1464,14 @@ public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
 
 				Logger.Log($"[{Type}] Caching plugin metadata for displaying plugins in the Admin module -> Plugins tab. This might take a while..");
 
-				Community.Runtime.CorePlugin.webrequest.Enqueue(ListEndpoint.Replace("[ID]", "0"), null, (error, data) =>
+				Community.Runtime.Core.webrequest.Enqueue(ListEndpoint.Replace("[ID]", "0"), null, (error, data) =>
 				{
+					if(error != 200)
+					{
+						Logger.Error($"[{Type}] Failed fetching vendor. Error code {error}!");
+						return;
+					}
+
 					var list = JObject.Parse(data);
 
 					var totalPages = list["last_page"]?.ToString().ToInt();
@@ -1454,7 +1485,7 @@ public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
 
 					FetchPage(0, totalPages.GetValueOrDefault(), callback);
 					list = null;
-				}, Community.Runtime.CorePlugin);
+				}, Community.Runtime.Core);
 			}
 			public override void Download(string id, Action onTimeout = null)
 			{
@@ -1464,7 +1495,7 @@ public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
 
 				plugin.IsBusy = true;
 
-				Community.Runtime.CorePlugin.timer.In(2f, () =>
+				Community.Runtime.Core.timer.In(2f, () =>
 				{
 					if (plugin.IsBusy)
 					{
@@ -1473,15 +1504,21 @@ public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
 					}
 				});
 
-				Community.Runtime.CorePlugin.webrequest.Enqueue(url, null, (error, source) =>
+				Community.Runtime.Core.webrequest.Enqueue(url, null, (error, source) =>
 				{
+					if (error != 200)
+					{
+						Logger.Error($"[{Type}] Failed downloading item '{plugin.Name} by {plugin.Author}'. Error code {error}!");
+						return;
+					}
+
 					Singleton.Puts($"Downloaded {plugin.Name}");
 					OsEx.File.Create(path, source);
 
 					plugin.IsBusy = false;
 					plugin.DownloadCount++;
 
-				}, Community.Runtime.CorePlugin, headers: new Dictionary<string, string>
+				}, Community.Runtime.Core, headers: new Dictionary<string, string>
 				{
 					["user-agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36 Edg/110.0.1587.63",
 					["accept"] = "ext/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7"
@@ -1498,8 +1535,14 @@ public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
 				var plugin = FetchedPlugins.FirstOrDefault(x => x.Id == id);
 				if (plugin.HasLookup) return;
 
-				Community.Runtime.CorePlugin.webrequest.Enqueue(PluginLookupEndpoint.Replace("[ID]", plugin.Name.ToLower().Trim()), null, (error, data) =>
+				Community.Runtime.Core.webrequest.Enqueue(PluginLookupEndpoint.Replace("[ID]", plugin.Name.ToLower().Trim()), null, (error, data) =>
 				{
+					if (error != 200)
+					{
+						Logger.Error($"[{Type}] Failed fetching item metadata for '{plugin.Name} by {plugin.Author}'. Error code {error}!");
+						return;
+					}
+
 					var list = JObject.Parse(data);
 					var description = list["description_md"]?.ToString();
 
@@ -1527,7 +1570,7 @@ public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
 
 					plugin.HasLookup = true;
 					onMetadataRetrieved?.Invoke();
-				}, Community.Runtime.CorePlugin);
+				}, Community.Runtime.Core);
 			}
 
 			public void FetchPage(int page, int maxPage, Action<Vendor> callback = null)
@@ -1539,10 +1582,16 @@ public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
 					return;
 				}
 
-				var plugins = Community.Runtime.CorePlugin.plugins.GetAll();
+				var plugins = Community.Runtime.Core.plugins.GetAll();
 
-				Community.Runtime.CorePlugin.webrequest.Enqueue(ListEndpoint.Replace("[ID]", $"{page}"), null, (error, data) =>
+				Community.Runtime.Core.webrequest.Enqueue(ListEndpoint.Replace("[ID]", $"{page}"), null, (error, data) =>
 				{
+					if (error != 200)
+					{
+						Logger.Error($"[{Type}] Failed fetching page for vendor. Error code {error}!");
+						return;
+					}
+
 					var list = JObject.Parse(data);
 					var file = list["data"];
 					foreach (var plugin in file)
@@ -1558,11 +1607,13 @@ public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
 							OriginalPrice = "FREE",
 							File = $"{plugin["name"]?.ToString()}.cs",
 							Image = image,
-							Thumbnail = image,
+							ImageThumbnail = image,
 							ImageSize = 0,
 							DownloadCount = (plugin["downloads"]?.ToString().ToInt()).GetValueOrDefault(),
+							Date = plugin["published_at"]?.ToString(),
 							UpdateDate = plugin["updated_at"]?.ToString(),
-							Tags = plugin["tags_all"]?.ToString().Split(',')
+							Tags = plugin["tags_all"]?.ToString().Split(','),
+							Rating = -1
 						};
 
 						if (!string.IsNullOrEmpty(p.Description) && !p.Description.EndsWith(".")) p.Description += ".";
@@ -1580,8 +1631,8 @@ public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
 					}
 
 					list = null;
-				}, Community.Runtime.CorePlugin);
-				Community.Runtime.CorePlugin.timer.In(5f, () => FetchPage(page + 1, maxPage, callback));
+				}, Community.Runtime.Core);
+				Community.Runtime.Core.timer.In(5f, () => FetchPage(page + 1, maxPage, callback));
 			}
 
 			public bool Load()
@@ -1636,20 +1687,21 @@ public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
 		#endregion
 
 		[ProtoContract]
-		public class Local : Vendor
+		public class Installed : Vendor
 		{
-			public override string Type => "All";
+			public override string Type => "Installed";
 			public override string Url => "none";
 			public override string Logo => "carbonw";
+			public override string Hero => "installed_hero";
 
 			public override float LogoRatio => 0.23f;
 			public override string ListEndpoint => string.Empty;
 			public override string DownloadEndpoint => string.Empty;
 			public override string BarInfo => $"{FetchedPlugins.Count:n0} loaded";
-			public override float IconScale => 0.4f;
-			public override float SafeIconScale => 0.2f;
 
-			internal string[] _defaultTags = new[] { "carbon", "oxide" };
+			public override bool CanRefresh => false;
+
+			internal string[] _defaultTags = ["carbon", "oxide"];
 
 			public override void CheckMetadata(string id, Action callback)
 			{
@@ -1672,12 +1724,7 @@ public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
 			{
 				FetchedPlugins.Clear();
 
-				if (LogoEnumerable == null)
-				{
-					LogoEnumerable = new[] { Logo };
-				}
-
-				foreach (var package in ModLoader.LoadedPackages)
+				foreach (var package in ModLoader.Packages)
 				{
 					foreach (var plugin in package.Plugins)
 					{
@@ -1685,20 +1732,35 @@ public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
 
 						var existent = FetchedPlugins.FirstOrDefault(x => x.ExistentPlugin == plugin);
 
-						if (existent == null) FetchedPlugins.Add(CodeflingInstance.FetchedPlugins.FirstOrDefault(x => x.ExistentPlugin == plugin) ??
-							uModInstance.FetchedPlugins.FirstOrDefault(x => x.ExistentPlugin == plugin)
-							?? (existent = new Plugin
+						if (!existent.IsValid)
+						{
+							existent = CodeflingInstance.FetchedPlugins.FirstOrDefault(x => x.ExistentPlugin == plugin);
+
+							if (!existent.IsValid)
 							{
-								Name = plugin.Name,
-								Author = plugin.Author,
-								Version = plugin.Version.ToString(),
-								ExistentPlugin = plugin,
-								Description = "This is an unlisted plugin.",
-								Tags = _defaultTags,
-								File = plugin.FileName,
-								Id = plugin.Name,
-								UpdateDate = DateTime.UtcNow.ToString()
-							}));
+								existent = uModInstance.FetchedPlugins.FirstOrDefault(x => x.ExistentPlugin == plugin);
+
+								if (!existent.IsValid)
+								{
+									existent = new Plugin
+									{
+										Name = plugin.Name,
+										Author = plugin.Author,
+										Version = plugin.Version.ToString(),
+										ExistentPlugin = plugin,
+										Description = "This is an unlisted plugin.",
+										Tags = _defaultTags,
+										File = plugin.FileName,
+										Id = plugin.Name,
+										UpdateDate = DateTime.UtcNow.ToString(),
+										Rating = -1
+									};
+								}
+
+							}
+
+							FetchedPlugins.Add(existent);
+						}
 					}
 				}
 
@@ -1728,10 +1790,10 @@ public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
 			public static ServerOwner Singleton { get; internal set; } = new ServerOwner();
 
 			[ProtoMember(1)]
-			public List<string> FavouritePlugins { get; set; } = new();
+			public List<string> FavouritePlugins = new();
 
 			[ProtoMember(2)]
-			public List<string> AutoUpdate { get; set; } = new();
+			public List<string> AutoUpdate = new();
 
 			public bool IsAutoUpdatable(string pluginName)
 			{
@@ -1780,40 +1842,54 @@ public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
 		}
 
 		[ProtoContract(ImplicitFields = ImplicitFields.AllPublic)]
-		public class Plugin
+		public struct Plugin
 		{
-			public string Id { get; set; }
-			public string Name { get; set; }
-			public string Author { get; set; }
-			public string Version { get; set; }
-			public string Description { get; set; }
-			public string Changelog { get; set; }
-			public string OriginalPrice { get; set; }
-			public string SalePrice { get; set; }
-			public string[] Dependencies { get; set; }
-			public string File { get; set; }
-			public string Image { get; set; }
-			public string Thumbnail { get; set; }
-			public int ImageSize { get; set; }
-			public IEnumerable<string> Tags { get; set; }
-			public int DownloadCount { get; set; }
-			public float Rating { get; set; }
-			public string UpdateDate { get; set; }
-			public bool HasLookup { get; set; } = false;
-			public Status Status { get; set; } = Status.Approved;
-			public bool CarbonCompatible { get; set; } = false;
-			public bool Owned { get; set; }
+			public string Id;
+			public string Name;
+			public string Author;
+			public string Version;
+			public string Description;
+			public string Changelog;
+			public string OriginalPrice;
+			public string SalePrice;
+			public string[] Dependencies;
+			public string File;
+			public string Image;
+			public string ImageThumbnail;
+			public int ImageSize;
+			public IEnumerable<string> Tags;
+			public int DownloadCount;
+			public float Rating;
+			public string Date;
+			public string UpdateDate;
+			public bool HasLookup;
+			public Status Status = Status.Approved;
+			public bool CarbonCompatible;
+			public bool Owned;
 
-			internal RustPlugin ExistentPlugin { get; set; }
-			internal bool IsBusy { get; set; }
+			internal RustPlugin ExistentPlugin;
+			internal bool IsBusy;
+
+			public Plugin()
+			{
+			}
+
+			[ProtoIgnore]
+			public readonly bool HasRating => Rating != -1;
+
+			[ProtoIgnore]
+			public readonly bool HasPrice => OriginalPrice != "Null";
+
+			[ProtoIgnore]
+			public readonly bool IsValid => !string.IsNullOrEmpty(Id);
 
 			public bool HasInvalidImage()
 			{
 				return ImageSize >= 2504304;
 			}
-			public bool NoImage()
+			public bool HasNoImage()
 			{
-				return string.IsNullOrEmpty(Image);
+				return string.IsNullOrEmpty(Image) || Image.Equals("Null");
 			}
 			public bool IsInstalled()
 			{
@@ -1827,7 +1903,7 @@ public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
 			}
 			public bool IsPaid()
 			{
-				return OriginalPrice != "FREE";
+				return OriginalPrice != "FREE" && OriginalPrice != "Null";
 			}
 			public bool IsUpToDate()
 			{
@@ -1835,6 +1911,9 @@ public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
 
 				return ExistentPlugin.Version.ToString() == Version;
 			}
+
+			public void SetOwned(bool wants) => Owned = wants;
+			public void SetExistentPlugin(RustPlugin plugin) => ExistentPlugin = plugin;
 		}
 	}
 
@@ -1867,7 +1946,7 @@ public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
 		var ap = Singleton.GetPlayerSession(player);
 		var tab = Singleton.GetTab(ap.Player);
 
-		var vendor = PluginsTab.GetVendor((PluginsTab.VendorTypes)Enum.Parse(typeof(PluginsTab.VendorTypes), ap.GetStorage(tab, "vendor", "Local")));
+		var vendor = PluginsTab.GetVendor((PluginsTab.VendorTypes)Enum.Parse(typeof(PluginsTab.VendorTypes), ap.GetStorage(tab, "vendor", PluginsTab.VendorTypes.Installed.ToString())));
 		var arg = new string[args.Args.Length];
 		Array.Copy(args.Args, arg, args.Args.Length);
 
@@ -1901,18 +1980,18 @@ public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
 				Singleton.SetTab(ap.Player, ConfigEditor.Make(OsEx.File.ReadText(path),
 					(ap, jobject) =>
 					{
-						Community.Runtime.CorePlugin.NextTick(() => Singleton.SetTab(ap.Player, "plugins", false));
+						Community.Runtime.Core.NextTick(() => Singleton.SetTab(ap.Player, "plugins", false));
 					},
 					(ap, jobject) =>
 					{
 						OsEx.File.Create(path, jobject.ToString(Formatting.Indented));
-						Community.Runtime.CorePlugin.NextTick(() => Singleton.SetTab(ap.Player, "plugins", false));
+						Community.Runtime.Core.NextTick(() => Singleton.SetTab(ap.Player, "plugins", false));
 					},
 					(ap, jobject) =>
 					{
 						OsEx.File.Create(path, jobject.ToString(Formatting.Indented));
 						plugin.ProcessorProcess.MarkDirty();
-						Community.Runtime.CorePlugin.NextTick(() => Singleton.SetTab(ap.Player, "plugins", false));
+						Community.Runtime.Core.NextTick(() => Singleton.SetTab(ap.Player, "plugins", false));
 					}));
 				Array.Clear(arg, 0, arg.Length);
 				break;
@@ -1925,7 +2004,7 @@ public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
 				if (plugin != null)
 				{
 					plugin.ProcessorProcess.MarkDirty();
-					Community.Runtime.CorePlugin.NextTick(() => Singleton.SetTab(ap.Player, "plugins", false));
+					Community.Runtime.Core.NextTick(() => Singleton.SetTab(ap.Player, "plugins", false));
 				}
 				break;
 			}
@@ -1937,7 +2016,7 @@ public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
 				Singleton.SetTab(ap.Player, LangEditor.Make(plugin,
 					(ap) =>
 					{
-						Community.Runtime.CorePlugin.NextTick(() => Singleton.SetTab(ap.Player, "plugins", false));
+						Community.Runtime.Core.NextTick(() => Singleton.SetTab(ap.Player, "plugins", false));
 					}));
 				break;
 			}
@@ -1988,7 +2067,7 @@ public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
 		var ap = Singleton.GetPlayerSession(args.Player());
 		var tab = Singleton.GetTab(ap.Player);
 
-		var vendor = PluginsTab.GetVendor((PluginsTab.VendorTypes)Enum.Parse(typeof(PluginsTab.VendorTypes), ap.GetStorage(tab, "vendor", "Local")));
+		var vendor = PluginsTab.GetVendor((PluginsTab.VendorTypes)Enum.Parse(typeof(PluginsTab.VendorTypes), ap.GetStorage(tab, "vendor", PluginsTab.VendorTypes.Installed.ToString())));
 		vendor.Refresh();
 		PluginsTab.GetPlugins(vendor, tab, ap, out var maxPages);
 
@@ -2025,7 +2104,7 @@ public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
 		var ap = Singleton.GetPlayerSession(args.Player());
 		var tab = Singleton.GetTab(ap.Player);
 
-		var vendor = PluginsTab.GetVendor((PluginsTab.VendorTypes)Enum.Parse(typeof(PluginsTab.VendorTypes), ap.GetStorage(tab, "vendor", "Local")));
+		var vendor = PluginsTab.GetVendor((PluginsTab.VendorTypes)Enum.Parse(typeof(PluginsTab.VendorTypes), ap.GetStorage(tab, "vendor", PluginsTab.VendorTypes.Installed.ToString())));
 		vendor.Refresh();
 
 		var filter = args.Args.ToString(" ");
@@ -2045,7 +2124,7 @@ public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
 		var ap = Singleton.GetPlayerSession(args.Player());
 		var tab = Singleton.GetTab(ap.Player);
 
-		var vendor = PluginsTab.GetVendor((PluginsTab.VendorTypes)Enum.Parse(typeof(PluginsTab.VendorTypes), ap.GetStorage(tab, "vendor", "Local")));
+		var vendor = PluginsTab.GetVendor((PluginsTab.VendorTypes)Enum.Parse(typeof(PluginsTab.VendorTypes), ap.GetStorage(tab, "vendor", PluginsTab.VendorTypes.Installed.ToString())));
 		vendor.Refresh();
 
 		var search = ap.SetStorage(tab, "search", args.Args.ToString(" "));
@@ -2065,9 +2144,9 @@ public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
 		var ap = Singleton.GetPlayerSession(args.Player());
 		var tab = Singleton.GetTab(ap.Player);
 
-		var vendor = PluginsTab.GetVendor((PluginsTab.VendorTypes)Enum.Parse(typeof(PluginsTab.VendorTypes), ap.GetStorage(tab, "vendor", "Local")));
+		var vendor = PluginsTab.GetVendor((PluginsTab.VendorTypes)Enum.Parse(typeof(PluginsTab.VendorTypes), ap.GetStorage(tab, "vendor", PluginsTab.VendorTypes.Installed.ToString())));
 
-		if (vendor is PluginsTab.Local) return;
+		if (vendor is PluginsTab.Installed) return;
 
 		tab.CreateDialog("Are you sure you want to redownload the plugin list?\nThis might take a while.", ap =>
 		{
@@ -2109,7 +2188,7 @@ public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
 		var ap = Singleton.GetPlayerSession(args.Player());
 		var tab = Singleton.GetTab(ap.Player);
 
-		var vendor = PluginsTab.GetVendor((PluginsTab.VendorTypes)Enum.Parse(typeof(PluginsTab.VendorTypes), ap.GetStorage(tab, "vendor", "Local")));
+		var vendor = PluginsTab.GetVendor((PluginsTab.VendorTypes)Enum.Parse(typeof(PluginsTab.VendorTypes), ap.GetStorage(tab, "vendor", PluginsTab.VendorTypes.Installed.ToString())));
 		vendor.Refresh();
 
 		ap.SetStorage(tab, "selectedplugin", vendor.FetchedPlugins.FirstOrDefault(x => x.Id == args.Args[0]));
@@ -2124,10 +2203,10 @@ public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
 		var ap = Singleton.GetPlayerSession(args.Player());
 		var tab = Singleton.GetTab(ap.Player);
 
-		var vendor = PluginsTab.GetVendor((PluginsTab.VendorTypes)Enum.Parse(typeof(PluginsTab.VendorTypes), ap.GetStorage(tab, "vendor", "Local")));
+		var vendor = PluginsTab.GetVendor((PluginsTab.VendorTypes)Enum.Parse(typeof(PluginsTab.VendorTypes), ap.GetStorage(tab, "vendor", PluginsTab.VendorTypes.Installed.ToString())));
 		vendor.Refresh();
 
-		ap.SetStorage(tab, "selectedplugin", (PluginsTab.Plugin)null);
+		ap.SetStorage(tab, "selectedplugin", (PluginsTab.Plugin)default);
 
 		Singleton.Draw(args.Player());
 	}
@@ -2139,13 +2218,13 @@ public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
 		var ap = Singleton.GetPlayerSession(args.Player());
 		var tab = Singleton.GetTab(ap.Player);
 
-		var vendor = PluginsTab.GetVendor((PluginsTab.VendorTypes)Enum.Parse(typeof(PluginsTab.VendorTypes), ap.GetStorage(tab, "vendor", "Local")));
+		var vendor = PluginsTab.GetVendor((PluginsTab.VendorTypes)Enum.Parse(typeof(PluginsTab.VendorTypes), ap.GetStorage(tab, "vendor", PluginsTab.VendorTypes.Installed.ToString())));
 		vendor.Refresh();
 
 		var plugins = PluginsTab.GetPlugins(vendor, tab, ap);
 		var nextPage = plugins.IndexOf(ap.GetStorage<PluginsTab.Plugin>(tab, "selectedplugin")) + args.Args[0].ToInt();
 		ap.SetStorage(tab, "selectedplugin", plugins[nextPage > plugins.Count - 1 ? 0 : nextPage < 0 ? plugins.Count - 1 : nextPage]);
-		Facepunch.Pool.FreeList(ref plugins);
+		Facepunch.Pool.FreeUnmanaged(ref plugins);
 
 		PluginsTab.DownloadThumbnails(vendor, tab, Singleton.GetPlayerSession(args.Player()));
 
@@ -2158,7 +2237,7 @@ public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
 	{
 		var ap = Singleton.GetPlayerSession(args.Player());
 		var tab = Singleton.GetTab(ap.Player);
-		var vendor = PluginsTab.GetVendor((PluginsTab.VendorTypes)Enum.Parse(typeof(PluginsTab.VendorTypes), ap.GetStorage(tab, "vendor", "Local")));
+		var vendor = PluginsTab.GetVendor((PluginsTab.VendorTypes)Enum.Parse(typeof(PluginsTab.VendorTypes), ap.GetStorage(tab, "vendor", PluginsTab.VendorTypes.Installed.ToString())));
 
 		switch (args.Args[0])
 		{
@@ -2222,7 +2301,7 @@ public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
 				};
 
 				var currentCode = auth.AuthCode;
-				var core = Community.Runtime.CorePlugin;
+				var core = Community.Runtime.Core;
 				var authHeader = auth.AuthHeader;
 
 				core.timer.In(5f, () =>
@@ -2275,18 +2354,21 @@ public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
 	[AuthLevel(2)]
 	private void DownloadPlugin(Arg args)
 	{
-		var vendor = PluginsTab.GetVendor(args.Args[0] == "codefling" ? PluginsTab.VendorTypes.Codefling : PluginsTab.VendorTypes.uMod);
+		var vendor = PluginsTab.GetVendor(args.GetString(0) == "codefling" ? PluginsTab.VendorTypes.Codefling : PluginsTab.VendorTypes.uMod);
 		if (vendor == null)
 		{
 			Singleton.PutsWarn($"Couldn't find that vendor.");
 			return;
 		}
-		var plugin = vendor.FetchedPlugins.FirstOrDefault(x => x.Name.ToLower().Trim().Contains(args.Args[1].ToLower().Trim()));
-		if (plugin == null)
+
+		var plugin = vendor.FetchedPlugins.FirstOrDefault(x => x.Name.Equals(args.GetString(1), StringComparison.InvariantCultureIgnoreCase));
+
+		if (!plugin.IsValid)
 		{
 			Singleton.PutsWarn($"Cannot find that plugin.");
 			return;
 		}
+
 		vendor.Download(plugin.Id, () => { Singleton.PutsWarn($"Couldn't download {plugin.Name}."); });
 	}
 

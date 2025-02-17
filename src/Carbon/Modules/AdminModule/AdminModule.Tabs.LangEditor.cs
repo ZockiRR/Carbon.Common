@@ -1,16 +1,6 @@
 ﻿#if !MINIMAL
 
-/*
- *
- * Copyright (c) 2022-2023 Carbon Community
- * All rights reserved.
- *
- */
-
 using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
-using StringEx = Carbon.Extensions.StringEx;
-using static Carbon.Components.CUI;
 
 namespace Carbon.Modules;
 
@@ -28,7 +18,7 @@ public partial class AdminModule
 
 		public static LangEditor Make(Plugin plugin, Action<PlayerSession> onCancel)
 		{
-			var tab = new LangEditor("langeditor", "Lang Editor", Community.Runtime.CorePlugin)
+			var tab = new LangEditor("langeditor", "Lang Editor", Community.Runtime.Core)
 			{
 				TargetPlugin = plugin,
 				OnCancel = onCancel,
@@ -69,12 +59,12 @@ public partial class AdminModule
 					Singleton.SetTab(ap.Player, ConfigEditor.Make(OsEx.File.ReadText(file),
 						(ap, jobject) =>
 						{
-							Community.Runtime.CorePlugin.NextTick(() => Singleton.SetTab(ap.Player, "plugins", false));
+							Community.Runtime.Core.NextTick(() => Singleton.SetTab(ap.Player, "plugins", false));
 						},
 						(ap, jobject) =>
 						{
 							OsEx.File.Create(file, jobject.ToString(Formatting.Indented));
-							Community.Runtime.CorePlugin.NextTick(() => Singleton.SetTab(ap.Player, "plugins", false));
+							Community.Runtime.Core.NextTick(() => Singleton.SetTab(ap.Player, "plugins", false));
 						},
 						(ap, jobject) =>
 						{
@@ -85,7 +75,7 @@ public partial class AdminModule
 								rustPlugin.ProcessorProcess.MarkDirty();
 							}
 
-							Community.Runtime.CorePlugin.NextTick(() => Singleton.SetTab(ap.Player, "plugins", false));
+							Community.Runtime.Core.NextTick(() => Singleton.SetTab(ap.Player, "plugins", false));
 						}));
 				}, ap => OptionButton.Types.Warned);
 			}

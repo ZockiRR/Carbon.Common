@@ -1,44 +1,47 @@
-﻿using System.Collections.Specialized;
-using ConVar;
-using Network;
+﻿using Network;
 using Oxide.Game.Rust.Cui;
 using UnityEngine.UI;
 using static Carbon.Components.CUI;
 using Net = Network.Net;
 
-/*
- *
- * Copyright (c) 2022-2024 Carbon Community
- * All rights reserved.
- *
- */
-
 namespace Carbon.Components;
 
+/// <summary>
+/// Carbon's built-in pooled CUI cache-based structure.
+/// </summary>
 public readonly struct CUI : IDisposable
 {
 	public Handler Manager { get; }
 	public ImageDatabaseModule ImageDatabase { get; }
 	public Handler.Cache CacheInstance => Manager.CacheInstance;
 
+	/// <summary>
+	/// All currently available client-side UI panels.
+	/// </summary>
 	public enum ClientPanels
 	{
+		Overall,
 		Overlay,
+		OverlayNonScaled,
 		Hud,
 		HudMenu,
 		Under,
-		LoadingBG,
-		LoadingFG
+		UnderNonScaled
 	}
+
+	/// <summary>
+	/// Gets the Rust-identifiable client-side panel name.
+	/// </summary>
 	public string GetClientPanel(ClientPanels panel)
 	{
 		return panel switch
 		{
+			ClientPanels.Overall => "Overall",
+			ClientPanels.OverlayNonScaled => "OverlayNonScaled",
 			ClientPanels.Hud => "Hud",
 			ClientPanels.HudMenu => "Hud.Menu",
 			ClientPanels.Under => "Under",
-			ClientPanels.LoadingBG => "Loading.BG",
-			ClientPanels.LoadingFG => "Loading.FG",
+			ClientPanels.UnderNonScaled => "UnderNonScaled",
 			_ => "Overlay",
 		};
 	}
@@ -51,21 +54,26 @@ public readonly struct CUI : IDisposable
 
 	#region Update
 
+	/// <summary>
+	/// Gets a disposable Update pool used to update existent Carbon elements already drawn onto the client.
+	/// </summary>
 	public Handler.UpdatePool UpdatePool()
 	{
 		return new Handler.UpdatePool();
 	}
 
-	#endregion
+    #endregion
 
-	#region Methods
-
-	public CuiElementContainer CreateContainer(string panel, string color = "0 0 0 0", float xMin = 0f, float xMax = 1f, float yMin = 0f, float yMax = 1f, float OxMin = 0f, float OxMax = 0f, float OyMin = 0f, float OyMax = 0f, float fadeIn = 0f, float fadeOut = 0f, bool needsCursor = false, bool needsKeyboard = false, ClientPanels parent = ClientPanels.Overlay, string id = null, string destroyUi = null)
+    #region Methods
+    public CuiElementContainer CreateContainer(string panel, string color = "0 0 0 0", float xMin = 0f, float xMax = 1f, float yMin = 0f, float yMax = 1f, float OxMin = 0f, float OxMax = 0f, float OyMin = 0f, float OyMax = 0f, float fadeIn = 0f, float fadeOut = 0f, bool needsCursor = false, bool needsKeyboard = false, ClientPanels parent = ClientPanels.Overlay, string destroyUi = null)
+    {
+        return CreateContainerParent(panel, color, xMin, xMax, yMin, yMax, OxMin, OxMax, OyMin, OyMax, fadeIn, fadeOut, needsCursor, needsKeyboard, GetClientPanel(parent), destroyUi);
+    }
+    public CuiElementContainer CreateContainerParent(string panel, string color = "0 0 0 0", float xMin = 0f, float xMax = 1f, float yMin = 0f, float yMax = 1f, float OxMin = 0f, float OxMax = 0f, float OyMin = 0f, float OyMax = 0f, float fadeIn = 0f, float fadeOut = 0f, bool needsCursor = false, bool needsKeyboard = false, string parentName = "Overlay", string destroyUi = null)
 	{
 		var container = Manager.TakeFromPoolContainer();
 		container.Name = panel;
 
-		var parentName = GetClientPanel(parent);
 		var element = Manager.TakeFromPool(panel, parentName);
 		element.FadeOut = fadeOut;
 		element.DestroyUi = destroyUi;
@@ -131,17 +139,6 @@ public readonly struct CUI : IDisposable
 
 		return Manager.Image(container, parent, GetImage(url), null, color, material, xMin, xMax, yMin, yMax, OxMin, OxMax, OyMin, OyMax, fadeIn, fadeOut, needsCursor, needsKeyboard, outlineColor, outlineDistance, outlineUseGraphicAlpha, id, destroyUi, update);
 	}
-	public Pair<string, CuiElement> CreateImage(CuiElementContainer container, string parent, string url, float scale, string color, string material = null, float xMin = 0f, float xMax = 1f, float yMin = 0f, float yMax = 1f, float OxMin = 0f, float OxMax = 0f, float OyMin = 0f, float OyMax = 0f, float fadeIn = 0f, float fadeOut = 0f, bool needsCursor = false, bool needsKeyboard = false, string outlineColor = null, string outlineDistance = null, bool outlineUseGraphicAlpha = false, string id = null, string destroyUi = null, bool update = false)
-	{
-		if (!HasImage(url))
-		{
-			return Manager.Panel(container, parent, color, material, xMin, xMax, yMin, yMax, OxMin, OxMax, OyMin, OyMax,
-				false, fadeIn, fadeOut, needsCursor, needsKeyboard, outlineColor, outlineDistance,
-				outlineUseGraphicAlpha, id, destroyUi, update);
-		}
-
-		return Manager.Image(container, parent, GetImage(url, scale), null, color, material, xMin, xMax, yMin, yMax, OxMin, OxMax, OyMin, OyMax, fadeIn, fadeOut, needsCursor, needsKeyboard, outlineColor, outlineDistance, outlineUseGraphicAlpha, id, destroyUi, update);
-	}
 	public Pair<string, CuiElement> CreateSimpleImage(CuiElementContainer container, string parent, string png, string sprite, string color, string material = null, float xMin = 0f, float xMax = 1f, float yMin = 0f, float yMax = 1f, float OxMin = 0f, float OxMax = 0f, float OyMin = 0f, float OyMax = 0f, float fadeIn = 0f, float fadeOut = 0f, bool needsCursor = false, bool needsKeyboard = false, string outlineColor = null, string outlineDistance = null, bool outlineUseGraphicAlpha = false, string id = null, string destroyUi = null, bool update = false)
 	{
 		return Manager.SimpleImage(container, parent, png, sprite, color, material, xMin, xMax, yMin, yMax, OxMin, OxMax, OyMin, OyMax, fadeIn, fadeOut, needsCursor, needsKeyboard, outlineColor, outlineDistance, outlineUseGraphicAlpha, id, destroyUi, update);
@@ -177,9 +174,9 @@ public readonly struct CUI : IDisposable
 	{
 		return Manager.Countdown(container, parent, startTime, endTime, step, command, fadeIn, fadeOut, id, destroyUi, update);
 	}
-	public Pair<string, CuiElement> CreateScrollView(CuiElementContainer container, string parent,bool vertical, bool horizontal, ScrollRect.MovementType movementType, float elasticity, bool inertia, float decelerationRate, float scrollSensitivity, string maskSoftness, out CuiRectTransformComponent contentTransform, out CuiScrollBarComponent horizontalScrollBar, out CuiScrollBarComponent verticalScrollBar, float xMin = 0f, float xMax = 1f, float yMin = 0f, float yMax = 1f, float OxMin = 0f, float OxMax = 0f, float OyMin = 0f, float OyMax = 0f, float fadeIn = 0f, float fadeOut = 0f, bool needsCursor = false, bool needsKeyboard = false, string id = null, string destroyUi = null, bool update = false)
+	public Pair<string, CuiElement> CreateScrollView(CuiElementContainer container, string parent,bool vertical, bool horizontal, ScrollRect.MovementType movementType, float elasticity, bool inertia, float decelerationRate, float scrollSensitivity, string maskSoftness, out CuiRectTransform contentTransformComponent, out CuiScrollbar horizontalScrollBar, out CuiScrollbar verticalScrollBar, float xMin = 0f, float xMax = 1f, float yMin = 0f, float yMax = 1f, float OxMin = 0f, float OxMax = 0f, float OyMin = 0f, float OyMax = 0f, float fadeIn = 0f, float fadeOut = 0f, bool needsCursor = false, bool needsKeyboard = false, string id = null, string destroyUi = null, bool update = false)
 	{
-		return Manager.ScrollView(container, parent, vertical, horizontal, movementType, elasticity, inertia, decelerationRate, scrollSensitivity, maskSoftness, out contentTransform, out horizontalScrollBar, out verticalScrollBar, xMin, xMax, yMin, yMax, OxMin, OxMax, OyMin, OyMax, fadeIn, fadeOut, needsCursor, needsKeyboard, id, destroyUi, update);
+		return Manager.ScrollView(container, parent, vertical, horizontal, movementType, elasticity, inertia, decelerationRate, scrollSensitivity, maskSoftness, out contentTransformComponent, out horizontalScrollBar, out verticalScrollBar, xMin, xMax, yMin, yMax, OxMin, OxMax, OyMin, OyMax, fadeIn, fadeOut, needsCursor, needsKeyboard, id, destroyUi, update);
 	}
 
 	public static string HexToRustColor(string hexColor, float? alpha = null, bool includeAlpha = true)
@@ -204,49 +201,58 @@ public readonly struct CUI : IDisposable
 
 	#region ImageDatabase
 
-	public string GetImage(string url, float scale = 0)
+	/// <summary>
+	/// Gets an existent image based on a mapped key or full length URL from Carbon's ImageDatabase module.
+	/// </summary>
+	public string GetImage(string keyOrUrl)
 	{
-		return ImageDatabase.GetImageString(url, scale, true);
+		return ImageDatabase.GetImageString(keyOrUrl);
 	}
 
-	public bool HasImage(string url, float scale = 0)
+	/// <summary>
+	/// Checks if an image is existent in Carbon's ImageDatabase module, using a key identifier or a full length URL.
+	/// </summary>
+	/// <param name="url"></param>
+	/// <returns></returns>
+	public bool HasImage(string url)
 	{
-		return ImageDatabase.HasImage(url, scale);
+		return ImageDatabase.HasImage(url);
 	}
 
-	public void QueueImages(float scale, IEnumerable<string> urls)
-	{
-		ImageDatabase.QueueBatch(scale, false, urls);
-	}
+	/// <summary>
+	/// Queues up various URLs to be downloaded and stored within Carbon's ImageDatabase module.
+	/// </summary>
 	public void QueueImages(IEnumerable<string> urls)
 	{
-		QueueImages(0, urls);
+		ImageDatabase.QueueBatch(false, urls);
 	}
 
-	public void ClearImages(float scale, IEnumerable<string> urls)
+	/// <summary>
+	/// Removes all stored images (if they exist) in the provided urls enumerable.
+	/// </summary>
+	public void ClearImages(IEnumerable<string> urls)
 	{
 		foreach (var url in urls)
 		{
-			ImageDatabase.DeleteImage(url, scale);
+			ImageDatabase.DeleteImage(url);
 		}
-	}
-	public void ClearImages(IEnumerable<string> urls)
-	{
-		ClearImages(0, urls);
 	}
 
 	#endregion
 
 	#region Send
 
+	/// <summary>
+	/// Serializes and networks the Carbon managed pooled container to a specified player.
+	/// </summary>
 	public void Send(CuiElementContainer container, BasePlayer player)
 	{
 		Manager.Send(container, player);
 	}
-	public void Destroy(CuiElementContainer container, BasePlayer player)
-	{
-		Manager.Destroy(container, player);
-	}
+
+	/// <summary>
+	/// Destroys a container using its panel identifier from a specific player.
+	/// </summary>
 	public void Destroy(string name, BasePlayer player)
 	{
 		Manager.Destroy(name, player);
@@ -254,6 +260,10 @@ public readonly struct CUI : IDisposable
 
 	#endregion
 
+	/// <summary>
+	/// Pair of one sub-element. 
+	/// </summary>
+	/// <typeparam name="T1">Key identifier.</typeparam>
 	public struct Pair<T1, T2>
 	{
 		public T1 Id;
@@ -270,6 +280,11 @@ public readonly struct CUI : IDisposable
 			return value.Id.ToString();
 		}
 	}
+
+	/// <summary>
+	/// Pair of two sub-elements.
+	/// </summary>
+	/// <typeparam name="T1">Key identifier.</typeparam>
 	public struct Pair<T1, T2, T3>
 	{
 		public T1 Id;
@@ -289,6 +304,9 @@ public readonly struct CUI : IDisposable
 		}
 	}
 
+	/// <summary>
+	/// Disposes and sends all currently used CUI elements to pool, for further reuse.
+	/// </summary>
 	public void Dispose()
 	{
 		Manager.SendToPool();
@@ -321,7 +339,7 @@ public readonly struct CUI : IDisposable
 		internal List<ICuiComponent> _countdowns = new();
 		internal List<ICuiComponent> _outlines = new();
 		internal List<ICuiComponent> _scrollViews = new();
-		internal List<ICuiComponent> _scrollBars = new();
+		internal List<ICuiComponent> _scrollbars = new();
 
 		#endregion
 
@@ -330,7 +348,7 @@ public readonly struct CUI : IDisposable
 		internal CuiRectPosition _defaultPosition = new(0f, 1f, 0f, 1f);
 		internal CuiImageComponent _defaultImage = new();
 		internal CuiRawImageComponent _defaultRawImage = new();
-		internal CuiRectTransformComponent _defaultRectTransform = new()
+		internal CuiRectTransformComponent DefaultRectTransformComponent = new()
 		{
 			OffsetMax = "0 0"
 		};
@@ -340,7 +358,7 @@ public readonly struct CUI : IDisposable
 		internal CuiCountdownComponent _defaultCountdown = new();
 		internal CuiOutlineComponent _defaultOutline = new();
 		internal CuiScrollViewComponent _defaultScrollView = new();
-		internal CuiScrollBarComponent _defaultScrollBar = new();
+		internal CuiScrollbar _defaultScrollBar = new();
 
 		#endregion
 
@@ -369,23 +387,13 @@ public readonly struct CUI : IDisposable
 				case CuiOutlineComponent: _outlines.Add(element); break;
 				case CuiScrollViewComponent scrollView:
 				{
-					if (scrollView.ContentTransform != null)
-					{
-						_rects.Add(scrollView.ContentTransform);
-					}
+					SendToPool(scrollView.HorizontalScrollbar);
+					SendToPool(scrollView.VerticalScrollbar);
 
-					if (scrollView.HorizontalScrollBar != null)
-					{
-						_scrollBars.Add(scrollView.HorizontalScrollBar);
-					}
-					if (scrollView.VerticalScrollBar != null)
-					{
-						_scrollBars.Add(scrollView.VerticalScrollBar);
-					}
-
-					_scrollViews.Add(element); break;
+					_scrollViews.Add(element);
+					break;
 				}
-				case CuiScrollBarComponent: _scrollBars.Add(element); break;
+				case CuiScrollbar: _scrollbars.Add(element); break;
 			}
 		}
 		public void SendToPool()
@@ -523,10 +531,10 @@ public readonly struct CUI : IDisposable
 			else
 			{
 				element = _rects[0] as CuiRectTransformComponent;
-				element.AnchorMin = _defaultRectTransform.AnchorMin;
-				element.AnchorMax = _defaultRectTransform.AnchorMax;
-				element.OffsetMin = _defaultRectTransform.OffsetMin;
-				element.OffsetMax = _defaultRectTransform.OffsetMax;
+				element.AnchorMin = DefaultRectTransformComponent.AnchorMin;
+				element.AnchorMax = DefaultRectTransformComponent.AnchorMax;
+				element.OffsetMin = DefaultRectTransformComponent.OffsetMin;
+				element.OffsetMax = DefaultRectTransformComponent.OffsetMax;
 				_rects.RemoveAt(0);
 			}
 
@@ -710,10 +718,10 @@ public readonly struct CUI : IDisposable
 				element.ContentTransform = new();
 				element.ContentTransform.AnchorMin = "0 0";
 				element.ContentTransform.AnchorMax = "1 1";
-				element.ContentTransform.OffsetMin = "0 -200";
+				element.ContentTransform.OffsetMin = "0 0";
 				element.ContentTransform.OffsetMax = "0 0";
-				element.HorizontalScrollBar = new();
-				element.VerticalScrollBar = new();
+				element.HorizontalScrollbar = TakeFromPoolScrollbar();
+				element.VerticalScrollbar = TakeFromPoolScrollbar();
 
 				_scrollViews.RemoveAt(0);
 			}
@@ -721,17 +729,17 @@ public readonly struct CUI : IDisposable
 			_queue.Add(element);
 			return element;
 		}
-		public CuiScrollBarComponent TakeFromPoolScrollbar()
+		public CuiScrollbar TakeFromPoolScrollbar()
 		{
-			var element = (CuiScrollBarComponent)null;
+			var element = (CuiScrollbar)null;
 
-			if (_scrollBars.Count == 0)
+			if (_scrollbars.Count == 0)
 			{
-				element = new CuiScrollBarComponent();
+				element = new CuiScrollbar();
 			}
 			else
 			{
-				element = _scrollBars[0] as CuiScrollBarComponent;
+				element = _scrollbars[0] as CuiScrollbar;
 				element.Invert = _defaultScrollBar.Invert;
 				element.AutoHide = _defaultScrollBar.AutoHide;
 				element.HandleSprite = _defaultScrollBar.HandleSprite;
@@ -742,7 +750,7 @@ public readonly struct CUI : IDisposable
 				element.TrackSprite = _defaultScrollBar.TrackSprite;
 				element.TrackColor = _defaultScrollBar.TrackColor;
 
-				_scrollBars.RemoveAt(0);
+				_scrollbars.RemoveAt(0);
 			}
 
 			_queue.Add(element);
@@ -774,9 +782,8 @@ public readonly struct CUI : IDisposable
 
 		public enum FontTypes
 		{
-			Arial,
 			RobotoCondensedBold, RobotoCondensedRegular,
-			PermanentMarker, DroidSansMono
+			PermanentMarker, DroidSansMono, NotoSansArabicBold
 		}
 
 		public string GetFont(FontTypes type)
@@ -787,9 +794,9 @@ public readonly struct CUI : IDisposable
 				FontTypes.RobotoCondensedRegular => "robotocondensed-regular.ttf",
 				FontTypes.PermanentMarker => "permanentmarker.ttf",
 				FontTypes.DroidSansMono => "droidsansmono.ttf",
+				FontTypes.NotoSansArabicBold => "NotoSansArabic-Bold.ttf",
 				_ => "robotocondensed-regular.ttf"
 			};
-
 		}
 
 		#endregion
@@ -828,10 +835,8 @@ public readonly struct CUI : IDisposable
 						Logger.Warn($"You're trying to update element '{pair.Element.Name}' (of parent '{pair.Element.Parent}') which doesn't allow updates. Ignoring.");
 						return;
 					}
-					else
-					{
-						Add(pair.Element);
-					}
+
+					Add(pair.Element);
 				}
 			}
 			public void Add(Pair<string, CuiElement, CuiElement> pair)
@@ -843,17 +848,19 @@ public readonly struct CUI : IDisposable
 						Logger.Warn($"You're trying to update element '{pair.Element1.Name}' (of parent '{pair.Element1.Parent}') which doesn't allow updates. Ignoring.");
 						return;
 					}
-					else Add(pair.Element1);
+
+					Add(pair.Element1);
 				}
 
 				if (pair.Element2 != null)
 				{
 					if (!pair.Element2.Update)
 					{
-						Logger.Warn($"You're trying to update element '{pair.Element2.Name}' (of parent '{pair.Element2.Parent}') which doesn't allow updates. Ignoring.");
+						// Logger.Warn($"You're trying to update element '{pair.Element2.Name}' (of parent '{pair.Element2.Parent}') which doesn't allow updates. Ignoring.");
 						return;
 					}
-					else Add(pair.Element2);
+
+					Add(pair.Element2);
 				}
 			}
 
@@ -955,10 +962,6 @@ public static class CUIStatics
 	{
 		return cui.CreateImage(null, null, url, color, material, xMin, xMax, yMin, yMax, OxMin, OxMax, OyMin, OyMax, fadeIn, fadeOut, needsCursor, needsKeyboard, outlineColor, outlineDistance, outlineUseGraphicAlpha, id, destroyUi, true);
 	}
-	public static Pair<string, CuiElement> UpdateImage(this CUI cui, string id, string url, float scale, string color, string material = null, float xMin = 0f, float xMax = 1f, float yMin = 0f, float yMax = 1f, float OxMin = 0f, float OxMax = 0f, float OyMin = 0f, float OyMax = 0f, float fadeIn = 0f, float fadeOut = 0f, bool needsCursor = false, bool needsKeyboard = false, string outlineColor = null, string outlineDistance = null, bool outlineUseGraphicAlpha = false, string destroyUi = null)
-	{
-		return cui.CreateImage(null, null, url, scale, color, material, xMin, xMax, yMin, yMax, OxMin, OxMax, OyMin, OyMax, fadeIn, fadeOut, needsCursor, needsKeyboard, outlineColor, outlineDistance, outlineUseGraphicAlpha, id, destroyUi, true);
-	}
 	public static Pair<string, CuiElement> UpdateSimpleImage(this CUI cui, string id, string png, string sprite, string color, string material = null, float xMin = 0f, float xMax = 1f, float yMin = 0f, float yMax = 1f, float OxMin = 0f, float OxMax = 0f, float OyMin = 0f, float OyMax = 0f, float fadeIn = 0f, float fadeOut = 0f, bool needsCursor = false, bool needsKeyboard = false, string outlineColor = null, string outlineDistance = null, bool outlineUseGraphicAlpha = false, string destroyUi = null)
 	{
 		return cui.CreateSimpleImage(null, null, png, sprite, color, material, xMin, xMax, yMin, yMax, OxMin, OxMax, OyMin, OyMax, fadeIn, fadeOut, needsCursor, needsKeyboard, outlineColor, outlineDistance, outlineUseGraphicAlpha, id, destroyUi, true);
@@ -983,9 +986,9 @@ public static class CUIStatics
 	{
 		return cui.CreateCountdown(null, null, startTime, endTime, step, command, fadeIn, fadeOut, id, destroyUi, true);
 	}
-	public static Pair<string, CuiElement> UpdateScrollView(this CUI cui, string id, bool vertical, bool horizontal, ScrollRect.MovementType movementType, float elasticity, bool inertia, float decelerationRate, float scrollSensitivity, string maskSoftness, out CuiRectTransformComponent contentTransform, out CuiScrollBarComponent horizontalScrollBar, out CuiScrollBarComponent verticalScrollBar, float xMin = 0f, float xMax = 1f, float yMin = 0f, float yMax = 1f, float OxMin = 0f, float OxMax = 0f, float OyMin = 0f, float OyMax = 0f, float fadeIn = 0f, float fadeOut = 0f, bool needsCursor = false, bool needsKeyboard = false, string destroyUi = null)
+	public static Pair<string, CuiElement> UpdateScrollView(this CUI cui, string id, bool vertical, bool horizontal, ScrollRect.MovementType movementType, float elasticity, bool inertia, float decelerationRate, float scrollSensitivity, string maskSoftness, out CuiRectTransform contentTransformComponent, out CuiScrollbar horizontalScrollBar, out CuiScrollbar verticalScrollBar, float xMin = 0f, float xMax = 1f, float yMin = 0f, float yMax = 1f, float OxMin = 0f, float OxMax = 0f, float OyMin = 0f, float OyMax = 0f, float fadeIn = 0f, float fadeOut = 0f, bool needsCursor = false, bool needsKeyboard = false, string destroyUi = null)
 	{
-		return cui.CreateScrollView(null, null, vertical, horizontal, movementType, elasticity, inertia, decelerationRate, scrollSensitivity, maskSoftness, out contentTransform, out horizontalScrollBar, out verticalScrollBar, xMin, xMax, yMin, yMax, OxMin, OxMax, OyMin, OyMax, fadeIn, fadeOut, needsCursor, needsKeyboard, id, destroyUi, true);
+		return cui.CreateScrollView(null, null, vertical, horizontal, movementType, elasticity, inertia, decelerationRate, scrollSensitivity, maskSoftness, out contentTransformComponent, out horizontalScrollBar, out verticalScrollBar, xMin, xMax, yMin, yMax, OxMin, OxMax, OyMin, OyMax, fadeIn, fadeOut, needsCursor, needsKeyboard, id, destroyUi, true);
 	}
 
 	public static Pair<string, CuiElement> Panel(this Handler cui, CuiElementContainer container, string parent, string color, string material, float xMin, float xMax, float yMin, float yMax, float OxMin, float OxMax, float OyMin, float OyMax, bool blur = false, float fadeIn = 0f, float fadeOut = 0f, bool needsCursor = false, bool needsKeyboard = false, string outlineColor = null, string outlineDistance = null, bool outlineUseGraphicAlpha = false, string id = null, string destroyUi = null, bool update = false)
@@ -1327,7 +1330,7 @@ public static class CUIStatics
 		if (!update) container?.Add(element);
 		return new Pair<string, CuiElement>(id, element);
 	}
-	public static Pair<string, CuiElement> ScrollView(this Handler cui, CuiElementContainer container, string parent, bool vertical, bool horizontal, ScrollRect.MovementType movementType, float elasticity, bool inertia, float decelerationRate, float scrollSensitivity, string maskSoftness, out CuiRectTransformComponent contentTransform, out CuiScrollBarComponent horizontalScrollBar, out CuiScrollBarComponent verticalScrollBar, float xMin, float xMax, float yMin, float yMax, float OxMin, float OxMax, float OyMin, float OyMax, float fadeIn = 0f, float fadeOut = 0f, bool needsCursor = false, bool needsKeyboard = false, string id = null, string destroyUi = null, bool update = false)
+	public static Pair<string, CuiElement> ScrollView(this Handler cui, CuiElementContainer container, string parent, bool vertical, bool horizontal, ScrollRect.MovementType movementType, float elasticity, bool inertia, float decelerationRate, float scrollSensitivity, string maskSoftness, out CuiRectTransform contentTransformComponent, out CuiScrollbar horizontalScrollBar, out CuiScrollbar verticalScrollBar, float xMin, float xMax, float yMin, float yMax, float OxMin, float OxMax, float OyMin, float OyMax, float fadeIn = 0f, float fadeOut = 0f, bool needsCursor = false, bool needsKeyboard = false, string id = null, string destroyUi = null, bool update = false)
 	{
 		if (id == null) id = cui.AppendId();
 		var element = cui.TakeFromPool(id, parent, fadeOut, destroyUi, update);
@@ -1341,9 +1344,9 @@ public static class CUIStatics
 		scrollview.DecelerationRate = decelerationRate;
 		scrollview.ScrollSensitivity = scrollSensitivity;
 		scrollview.MaskSoftness = maskSoftness;
-		contentTransform = scrollview.ContentTransform;
-		horizontalScrollBar = scrollview.HorizontalScrollBar;
-		verticalScrollBar = scrollview.VerticalScrollBar;
+		contentTransformComponent = scrollview.ContentTransform;
+		horizontalScrollBar = scrollview.HorizontalScrollbar;
+		verticalScrollBar = scrollview.VerticalScrollbar;
 
 		element.Components.Add(scrollview);
 
@@ -1379,8 +1382,8 @@ public static class CUIStatics
 		write.UInt64(0UL);
 		write.String(container.ToJson());
 
-		var bytes = new byte[write._length];
-		Array.Copy(write.Data, bytes, write._length);
+		var bytes = new byte[write.Length];
+		Array.Copy(write.Data, bytes, write.Length);
 
 		Facepunch.Pool.Free(ref write);
 
@@ -1397,12 +1400,12 @@ public static class CUIStatics
 	}
 	public static void SendUpdate(this Pair<string, CuiElement> pair, BasePlayer player)
 	{
-		var elements = Facepunch.Pool.GetList<CuiElement>();
+		var elements = Facepunch.Pool.Get<List<CuiElement>>();
 		elements.Add(pair.Element);
 
 		CuiHelper.AddUi(player, elements);
 
-		Facepunch.Pool.Free(ref elements);
+		Facepunch.Pool.FreeUnmanaged(ref elements);
 	}
 	public static void Destroy(this CuiElementContainer container, BasePlayer player)
 	{

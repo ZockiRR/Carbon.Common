@@ -1,13 +1,6 @@
-﻿/*
- *
- * Copyright (c) 2022-2023 Carbon Community
- * All rights reserved.
- *
- */
+﻿namespace Carbon.Core;
 
-namespace Carbon.Core;
-
-public partial class CorePlugin : CarbonPlugin
+public partial class CorePlugin
 {
 	[ConsoleCommand("addconditional", "Adds a new conditional compilation symbol to the compiler.")]
 	[AuthLevel(2)]
@@ -26,9 +19,9 @@ public partial class CorePlugin : CarbonPlugin
 			arg.ReplyWith($"Conditional '{value}' already exists.");
 		}
 
-		foreach (var mod in ModLoader.LoadedPackages)
+		foreach (var mod in ModLoader.Packages)
 		{
-			var plugins = Facepunch.Pool.GetList<RustPlugin>();
+			var plugins = Facepunch.Pool.Get<List<RustPlugin>>();
 			plugins.AddRange(mod.Plugins);
 
 			foreach (var plugin in plugins)
@@ -41,7 +34,7 @@ public partial class CorePlugin : CarbonPlugin
 				}
 			}
 
-			Facepunch.Pool.FreeList(ref plugins);
+			Facepunch.Pool.FreeUnmanaged(ref plugins);
 		}
 	}
 
@@ -62,9 +55,9 @@ public partial class CorePlugin : CarbonPlugin
 			arg.ReplyWith($"Conditional '{value}' does not exist.");
 		}
 
-		foreach (var mod in ModLoader.LoadedPackages)
+		foreach (var mod in ModLoader.Packages)
 		{
-			var plugins = Facepunch.Pool.GetList<RustPlugin>();
+			var plugins = Facepunch.Pool.Get<List<RustPlugin>>();
 			plugins.AddRange(mod.Plugins);
 
 			foreach (var plugin in plugins)
@@ -77,7 +70,7 @@ public partial class CorePlugin : CarbonPlugin
 				}
 			}
 
-			Facepunch.Pool.FreeList(ref plugins);
+			Facepunch.Pool.FreeUnmanaged(ref plugins);
 		}
 	}
 

@@ -1,13 +1,6 @@
-﻿/*
- *
- * Copyright (c) 2022-2023 Carbon Community
- * All rights reserved.
- *
- */
+﻿namespace Carbon.Core;
 
-namespace Carbon.Core;
-
-public partial class CorePlugin : CarbonPlugin
+public partial class CorePlugin
 {
 #if DEBUG
 	[CommandVar("scriptdebugorigin", "[For debugging purposes] Overrides the script directory to this value so remote debugging is possible.")]
@@ -19,16 +12,13 @@ public partial class CorePlugin : CarbonPlugin
 	[AuthLevel(2)]
 	private int HookLagSpikeThreshold { get { return Community.Runtime.Config.Debugging.HookLagSpikeThreshold; } set { Community.Runtime.Config.Debugging.HookLagSpikeThreshold = value.Clamp(100, 10000); } }
 
-	[ConsoleCommand("resethooks", "Clears all progress on all of the current hooks (hook time, fires, memory usage and lag spikes).")]
+	[ConsoleCommand("resethooks", "Clears all progress on all of the current hooks (hook time, fires, memory usage, exceptions and lag spikes).")]
 	[AuthLevel(2)]
 	private void ResetHooks(ConsoleSystem.Arg arg)
 	{
-		foreach (var package in ModLoader.LoadedPackages)
+		foreach (var plugin in ModLoader.Packages.SelectMany(package => package.Plugins))
 		{
-			foreach (var plugin in package.Plugins)
-			{
-				plugin.HookPool.Reset();
-			}
+			plugin.HookPool.Reset();
 		}
 
 		foreach (var module in Community.Runtime.ModuleProcessor.Modules)

@@ -1,24 +1,17 @@
-﻿/*
- *
- * Copyright (c) 2022-2023 Carbon Community
- * All rights reserved.
- *
- */
-
-using System.Text;
+﻿using System.Text;
 using API.Hooks;
 using Facepunch;
 using Timer = Oxide.Plugins.Timer;
 
 namespace Carbon.Core;
 
-public partial class CorePlugin : CarbonPlugin
+public partial class CorePlugin
 {
 	[ConsoleCommand("hooks", "Prints total information for all currently active and patched hooks in the server. (syntax: c.hooks [loaded] [-p|-s|-d])")]
 	[AuthLevel(2)]
 	private void HooksCall(ConsoleSystem.Arg args)
 	{
-		using var table = new StringTable("#", "Hook", "Id", "Type", "Status", "Time", "Fires", "Memory", "Lag", "Subs");
+		using var table = new StringTable("#", "hook", "id", "type", "status", "time", "fires", "memory", "lag", "exceptions", "subs");
 		var count = 1;
 		var success = 0;
 		var warning = 0;
@@ -36,21 +29,21 @@ public partial class CorePlugin : CarbonPlugin
 					switch (option2)
 					{
 						case "-p":
-							hooks = Community.Runtime.HookManager.LoadedPatches.Where(x => !x.IsHidden);
+							hooks = Community.Runtime.HookManager.LoadedPatches;
 							break;
 
 						case "-s":
-							hooks = Community.Runtime.HookManager.LoadedStaticHooks.Where(x => !x.IsHidden);
+							hooks = Community.Runtime.HookManager.LoadedStaticHooks;
 							break;
 
 						case "-d":
-							hooks = Community.Runtime.HookManager.LoadedDynamicHooks.Where(x => !x.IsHidden);
+							hooks = Community.Runtime.HookManager.LoadedDynamicHooks;
 							break;
 
 						default:
-							hooks = Community.Runtime.HookManager.LoadedPatches.Where(x => !x.IsHidden);
-							hooks = hooks.Concat(Community.Runtime.HookManager.LoadedStaticHooks.Where(x => !x.IsHidden));
-							hooks = hooks.Concat(Community.Runtime.HookManager.LoadedDynamicHooks.Where(x => !x.IsHidden));
+							hooks = Community.Runtime.HookManager.LoadedPatches;
+							hooks = hooks.Concat(Community.Runtime.HookManager.LoadedStaticHooks);
+							hooks = hooks.Concat(Community.Runtime.HookManager.LoadedDynamicHooks);
 							break;
 					}
 
@@ -76,6 +69,7 @@ public partial class CorePlugin : CarbonPlugin
 						var fires = HookCaller.GetTotalFires(hook);
 						var memory = HookCaller.GetTotalMemory(hook);
 						var lagSpikes = HookCaller.GetTotalLagSpikes(hook);
+						var exceptions = HookCaller.GetTotalExceptions(hook);
 
 						table.AddRow(
 							$"{count++:n0}",
@@ -87,6 +81,7 @@ public partial class CorePlugin : CarbonPlugin
 							fires == 0 ? string.Empty : $"{fires}",
 							memory == 0 ? string.Empty : $"{ByteEx.Format(memory, shortName: true).ToLower()}",
 							lagSpikes == 0 ? string.Empty : $"{lagSpikes}",
+							exceptions == 0 ? string.Empty : $"{exceptions}",
 							iHook.IsStaticHook ? "N/A" : $"{Community.Runtime.HookManager.GetHookSubscriberCount(iHook.Identifier),3}"
 						);
 					}
@@ -103,15 +98,15 @@ public partial class CorePlugin : CarbonPlugin
 					switch (option1)
 					{
 						case "-p":
-							hooks = Community.Runtime.HookManager.InstalledPatches.Where(x => !x.IsHidden);
+							hooks = Community.Runtime.HookManager.InstalledPatches;
 							break;
 
 						case "-s":
-							hooks = Community.Runtime.HookManager.InstalledStaticHooks.Where(x => !x.IsHidden);
+							hooks = Community.Runtime.HookManager.InstalledStaticHooks;
 							break;
 
 						case "-d":
-							hooks = Community.Runtime.HookManager.InstalledDynamicHooks.Where(x => !x.IsHidden);
+							hooks = Community.Runtime.HookManager.InstalledDynamicHooks;
 							break;
 
 						default:
@@ -120,11 +115,11 @@ public partial class CorePlugin : CarbonPlugin
 							hooks = hooks.Concat(Community.Runtime.HookManager.InstalledStaticHooks);
 							hooks = hooks.Concat(Community.Runtime.HookManager.InstalledDynamicHooks);
 #else
-							hooks = Community.Runtime.HookManager.InstalledPatches.Where(x => !x.IsHidden);
+							hooks = Community.Runtime.HookManager.InstalledPatches;
 							hooks = hooks.Concat(
-								Community.Runtime.HookManager.InstalledStaticHooks.Where(x => !x.IsHidden));
+								Community.Runtime.HookManager.InstalledStaticHooks);
 							hooks = hooks.Concat(
-								Community.Runtime.HookManager.InstalledDynamicHooks.Where(x => !x.IsHidden));
+								Community.Runtime.HookManager.InstalledDynamicHooks);
 #endif
 							break;
 					}
@@ -149,6 +144,7 @@ public partial class CorePlugin : CarbonPlugin
 						var fires = HookCaller.GetTotalFires(hook);
 						var memory = HookCaller.GetTotalMemory(hook);
 						var lagSpikes = HookCaller.GetTotalLagSpikes(hook);
+						var exceptions = HookCaller.GetTotalExceptions(hook);
 
 						table.AddRow(
 							$"{count++:n0}",
@@ -160,6 +156,7 @@ public partial class CorePlugin : CarbonPlugin
 							fires == 0 ? string.Empty : $"{fires:n0}",
 							memory == 0 ? string.Empty : $"{ByteEx.Format(memory, shortName: true).ToLower()}",
 							lagSpikes == 0 ? string.Empty : $"{lagSpikes:n0}",
+							exceptions == 0 ? string.Empty : $"{exceptions:n0}",
 							(iHook.IsStaticHook) ? "N/A" : $"{Community.Runtime.HookManager.GetHookSubscriberCount(iHook.Identifier),3}"
 						);
 					}
@@ -181,110 +178,102 @@ public partial class CorePlugin : CarbonPlugin
 			return;
 		}
 
-		var name = arg.GetString(0).ToLower();
+		var name = arg.GetString(0);
 		var isUid = uint.TryParse(name, out _);
 
 		var hookName = isUid ? HookStringPool.GetOrAdd(name.ToUint()) : name;
 		var hookId = isUid ? name.ToUint() : HookStringPool.GetOrAdd(name);
 
-		var output = PoolEx.GetStringBuilder();
+		var output = Pool.Get<StringBuilder>();
 
 		const string byteFormat = "{0}{1}";
 
 		output.AppendLine($"Information for {hookName}[{hookId}]");
 		{
-			var plugins = PoolEx.GetDictionary<BaseHookable, List<CachedHook>>();
+			var plugins = Pool.Get<Dictionary<BaseHookable, CachedHookInstance>>();
 			{
-				foreach (var package in ModLoader.LoadedPackages)
+				foreach (var package in ModLoader.Packages)
 				{
 					foreach (var plugin in package.Plugins)
 					{
-						foreach (var hookCache in plugin.HookPool)
+						foreach (var hookCache in plugin.HookPool.Where(hookCache => hookCache.Key == hookId))
 						{
-							if (hookCache.Key == hookId)
-							{
-								plugins.Add(plugin, hookCache.Value);
-							}
+							plugins.Add(plugin, hookCache.Value);
 						}
 					}
 				}
 			}
 
-			using var table = new StringTable(string.Empty, $"Plugins ({plugins.Count:n0})", "Time", "Fires", "Memory", "Lag", "Async & Overrides");
+			using var table = new StringTable(string.Empty, $"plugins ({plugins.Count:n0})", "time", "fires", "memory", "lag", "exceptions", "async / hooks");
 
 			foreach (var plugin in plugins)
 			{
-				var hook = plugin.Value.FirstOrDefault();
+				var hook = plugin.Value.PrimaryHook;
 				table.AddRow(string.Empty,
 					$"{plugin.Key.Name}",
 					hook.HookTime.TotalMilliseconds == 0 ? string.Empty : $"{hook.HookTime.TotalMilliseconds:0}ms",
 					hook.TimesFired == 0 ? string.Empty : $"{hook.TimesFired:n0}",
 					hook.MemoryUsage == 0 ? string.Empty : ByteEx.Format(hook.MemoryUsage, stringFormat: byteFormat).ToLower(),
 					hook.LagSpikes == 0 ? string.Empty : $"{hook.LagSpikes:n0}",
-					$"{plugin.Value.Count(x => x.IsAsync):n0} / {plugin.Value.Count:n0}");
+					hook.Exceptions == 0 ? string.Empty : $"{hook.Exceptions:n0}",
+					$"{plugin.Value.Hooks.Count(x => x.IsAsync):n0} / {plugin.Value.Hooks.Count:n0}");
 			}
 
-			var modules = PoolEx.GetDictionary<BaseHookable, List<CachedHook>>();
+			var modules = Pool.Get<Dictionary<BaseHookable, CachedHookInstance>>();
 			{
 				foreach (var module in Community.Runtime.ModuleProcessor.Modules)
 				{
-					foreach (var hookCache in module.HookPool)
+					foreach (var hookCache in module.HookPool.Where(hookCache => hookCache.Key == hookId))
 					{
-						if (hookCache.Key == hookId)
-						{
-							modules.Add(module, hookCache.Value);
-							break;
-						}
+						modules.Add(module, hookCache.Value);
+						break;
 					}
 				}
 			}
 
-			table.AddRow(string.Empty, $"Modules ({modules.Count:n0})", string.Empty, string.Empty, string.Empty, string.Empty, string.Empty);
+			table.AddRow(string.Empty, $"Modules ({modules.Count:n0})", string.Empty, string.Empty, string.Empty, string.Empty, string.Empty, string.Empty);
 
 			foreach (var module in modules)
 			{
-				var hook = module.Value.FirstOrDefault();
+				var hook = module.Value.Hooks.FirstOrDefault();
 				table.AddRow(string.Empty,
 					$"{module.Key.Name}",
 					hook.HookTime.TotalMilliseconds == 0 ? string.Empty : $"{hook.HookTime.TotalMilliseconds:0}ms",
 					hook.TimesFired == 0 ? string.Empty : $"{hook.TimesFired:n0}",
 					hook.MemoryUsage == 0 ? string.Empty : ByteEx.Format(hook.MemoryUsage, stringFormat: byteFormat).ToLower(),
 					hook.LagSpikes == 0 ? string.Empty : $"{hook.LagSpikes:n0}",
-					$"{module.Value.Count(x => x.IsAsync):n0} / {module.Value.Count:n0}");
+					hook.Exceptions == 0 ? string.Empty : $"{hook.Exceptions:n0}",
+					$"{module.Value.Hooks.Count(x => x.IsAsync):n0} / {module.Value.Hooks.Count:n0}");
 			}
 
-			var totalTime = plugins.Sum(x => x.Value.Sum(y => y.HookTime.TotalMilliseconds)) +
-			                modules.Sum(x => x.Value.Sum(y => y.HookTime.TotalMilliseconds));
-			var totalFires = plugins.Sum(x => x.Value.Sum(y => y.TimesFired)) +
-			                 modules.Sum(x => x.Value.Sum(y => y.TimesFired));
-			var totalMemory = plugins.Sum(x => x.Value.Sum(y => y.MemoryUsage)) +
-			                  modules.Sum(x => x.Value.Sum(y => y.MemoryUsage));
-			var totalLag = plugins.Sum(x => x.Value.Sum(y => y.LagSpikes)) +
-			               modules.Sum(x => x.Value.Sum(y => y.LagSpikes));
+			var totalTime = plugins.Sum(x => x.Value.Hooks.Sum(y => y.HookTime.TotalMilliseconds)) +
+			                modules.Sum(x => x.Value.Hooks.Sum(y => y.HookTime.TotalMilliseconds));
+			var totalFires = plugins.Sum(x => x.Value.Hooks.Sum(y => y.TimesFired)) +
+			                 modules.Sum(x => x.Value.Hooks.Sum(y => y.TimesFired));
+			var totalMemory = plugins.Sum(x => x.Value.Hooks.Sum(y => y.MemoryUsage)) +
+			                  modules.Sum(x => x.Value.Hooks.Sum(y => y.MemoryUsage));
+			var totalLag = plugins.Sum(x => x.Value.Hooks.Sum(y => y.LagSpikes)) +
+			               modules.Sum(x => x.Value.Hooks.Sum(y => y.LagSpikes));
+			var totalExceptions = plugins.Sum(x => x.Value.Hooks.Sum(y => y.Exceptions)) +
+			               modules.Sum(x => x.Value.Hooks.Sum(y => y.Exceptions));
 
-			table.AddRow(string.Empty, string.Empty, string.Empty, string.Empty, string.Empty, string.Empty, string.Empty);
+			table.AddRow(string.Empty, string.Empty, string.Empty, string.Empty, string.Empty, string.Empty, string.Empty, string.Empty);
 			table.AddRow(string.Empty, "Total",
 				totalTime == 0 ? string.Empty : $"{totalTime:0}ms",
 				totalFires == 0 ? string.Empty : $"{totalFires:n0}",
 				totalMemory == 0 ? string.Empty : $"{ByteEx.Format(totalMemory).ToLower()}",
 				totalLag == 0 ? string.Empty : $"{totalLag:n0}",
+				totalExceptions == 0 ? string.Empty : $"{totalExceptions:n0}",
 				string.Empty);
 
 			output.AppendLine(table.ToStringMinimal().TrimEnd());
 
 			arg.ReplyWith(output.ToString());
 
-			PoolEx.FreeStringBuilder(ref output);
-			PoolEx.FreeDictionary(ref plugins);
-			PoolEx.FreeDictionary(ref modules);
+			Pool.FreeUnmanaged(ref output);
+			Pool.FreeUnmanaged(ref plugins);
+			Pool.FreeUnmanaged(ref modules);
 		}
-	}
-
-	[ConsoleCommand("fetchhooks", "It looks up for the latest available hooks for your current protocol, downloads them, then patches them accordingly at runtime.")]
-	[AuthLevel(2)]
-	private void FetchHooks(ConsoleSystem.Arg arg)
-	{
-		Community.Runtime.HookManager.Fetch();
 	}
 
 #if DEBUG
@@ -330,13 +319,11 @@ public partial class CorePlugin : CarbonPlugin
 
 		static void LoopHookableProcess(uint hookId, bool alreadyDebugging, ref int hooksFound)
 		{
-			foreach (var package in ModLoader.LoadedPackages)
+			foreach (var plugin in ModLoader.Packages.SelectMany(package => package.Plugins))
 			{
-				foreach (var plugin in package.Plugins)
-				{
-					ProcessHookable(plugin, hookId, alreadyDebugging, ref hooksFound);
-				}
+				ProcessHookable(plugin, hookId, alreadyDebugging, ref hooksFound);
 			}
+
 			foreach (var module in Community.Runtime.ModuleProcessor.Modules)
 			{
 				ProcessHookable(module, hookId, alreadyDebugging, ref hooksFound);
@@ -344,18 +331,12 @@ public partial class CorePlugin : CarbonPlugin
 		}
 		static void ProcessHookable(BaseHookable hookable, uint hookId, bool alreadyDebugging, ref int hooksFound)
 		{
-			foreach (var cache in hookable.HookPool)
+			foreach (var hook in hookable.HookPool
+				         .Where(cache => cache.Key == hookId)
+				         .SelectMany(cache => cache.Value.Hooks))
 			{
-				if (cache.Key != hookId)
-				{
-					continue;
-				}
-
-				foreach (var hook in cache.Value)
-				{
-					hooksFound++;
-					hook.EnableDebugging(!alreadyDebugging);
-				}
+				hooksFound++;
+				hook.EnableDebugging(!alreadyDebugging);
 			}
 		}
 
@@ -380,12 +361,9 @@ public partial class CorePlugin : CarbonPlugin
 	[AuthLevel(2)]
 	private void DebugAllHooks(ConsoleSystem.Arg arg)
 	{
-		foreach (var package in ModLoader.LoadedPackages)
+		foreach (var plugin in ModLoader.Packages.SelectMany(package => package.Plugins))
 		{
-			foreach (var plugin in package.Plugins)
-			{
-				plugin.HookPool.EnableDebugging(!EnforceHookDebugging);
-			}
+			plugin.HookPool.EnableDebugging(!EnforceHookDebugging);
 		}
 		foreach (var module in Community.Runtime.ModuleProcessor.Modules)
 		{
@@ -395,6 +373,14 @@ public partial class CorePlugin : CarbonPlugin
 		EnforceHookDebugging = true;
 
 		arg.ReplyWith($"{(EnforceHookDebugging ? "Enabled" : "Disabled")} debugging across all hooks in plugins and modules (as well as future hooks that will be processed).");
+	}
+
+	[Conditional("DEBUG")]
+	[ConsoleCommand("firehook", "For debugging purposes, it executes a hook manually. If the hook have arguments, it'll most likely throw plugin/module errors, but we probably want those.")]
+	[AuthLevel(2)]
+	private void FireHook(ConsoleSystem.Arg arg)
+	{
+		HookCaller.CallStaticHook(HookStringPool.GetOrAdd(arg.GetString(0)));
 	}
 	#endif
 }

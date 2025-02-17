@@ -1,23 +1,22 @@
-﻿/*
- *
- * Copyright (c) 2022-2024 Carbon Community
- * All rights reserved.
- *
- */
+﻿using System.Data.Entity.Core.Objects;
+using UnityEngine;
 
 namespace Carbon;
 
-public class Entities : IDisposable
+/// <summary>
+/// Carbon component centralized place of accessing Rust spawned entities.
+/// </summary>
+public class Entities
 {
 	public static void Init()
 	{
 		try
 		{
-			Community.Runtime.Entities?.Dispose();
+			Dispose();
 
 			foreach (var type in _findAssignablesFrom<BaseEntity>())
 			{
-				Mapping.Add(type, new List<object>(100000));
+				Mapping.Add(new(type), new List<object>(100000));
 			}
 
 			if (Community.IsServerInitialized)
@@ -29,7 +28,7 @@ public class Entities : IDisposable
 			{
 				foreach (var type in Mapping)
 				{
-					type.Value.AddRange(BaseNetworkable.serverEntities.Where(x => x.GetType() == type.Key).Select(x => x as BaseEntity));
+					type.Value.AddRange(BaseNetworkable.serverEntities.Where(x => x.GetType() == type.Key.type).Select(x => x as BaseEntity));
 				}
 			}
 
@@ -38,10 +37,13 @@ public class Entities : IDisposable
 				Carbon.Logger.Warn($"Done mapping.");
 			}
 		}
-		catch (Exception ex) { Carbon.Logger.Error($"Failed Entities.Init()", ex); }
+		catch (Exception ex)
+		{
+			Carbon.Logger.Error($"Failed Entities.Init()", ex);
+		}
 	}
 
-	public void Dispose()
+	public static void Dispose()
 	{
 		foreach (var map in Mapping)
 		{
@@ -51,7 +53,7 @@ public class Entities : IDisposable
 		Mapping.Clear();
 	}
 
-	public static Dictionary<Type, List<object>> Mapping { get; internal set; } = new();
+	public static Dictionary<EntityType, List<object>> Mapping { get; internal set; } = new();
 
 	internal static IEnumerable<Type> _findAssignablesFrom<TBaseType>()
 	{
@@ -61,18 +63,21 @@ public class Entities : IDisposable
 		return assembly.GetTypes().Where(t => baseType.IsAssignableFrom(t));
 	}
 
-	public static Map<T> Get<T>(bool inherited = false)
+	/// <summary>
+	/// Gets a map of a specified entity type, or inherited from provided type (if inherited is true).
+	/// </summary>
+	public static Map<T> Get<T>(bool inherited = false) where T : class, new()
 	{
 		var map = new Map<T>
 		{
-			Pool = Facepunch.Pool.GetList<T>()
+			Pool = Facepunch.Pool.Get<List<T>>()
 		};
 
 		if (inherited)
 		{
 			foreach (var entry in Mapping)
 			{
-				if (typeof(T).IsAssignableFrom(entry.Key))
+				if (typeof(T).IsAssignableFrom(entry.Key.type))
 				{
 					foreach (T entity in entry.Value)
 					{
@@ -83,7 +88,7 @@ public class Entities : IDisposable
 		}
 		else
 		{
-			if (Mapping.TryGetValue(typeof(T), out var mapping))
+			if (Mapping.TryGetValue(new(typeof(T)), out var mapping))
 			{
 				foreach (var entity in mapping)
 				{
@@ -94,18 +99,22 @@ public class Entities : IDisposable
 
 		return map;
 	}
-	public static Map<BaseEntity> GetAll(bool inherited = false)
+
+	/// <summary>
+	/// Gets all entities of BaseEntity. If inherited is true, it returns everything spawnable on the server, otherwise ONLY entities with BaseEntity as base class.
+	/// </summary>
+	public static Map<BaseEntity> GetAll(bool inherited = true) 
 	{
 		var map = new Map<BaseEntity>
 		{
-			Pool = Facepunch.Pool.GetList<BaseEntity>()
+			Pool = Facepunch.Pool.Get<List<BaseEntity>>()
 		};
 
 		if (inherited)
 		{
 			foreach (var entry in Mapping)
 			{
-				if (typeof(BaseEntity).IsAssignableFrom(entry.Key))
+				if (typeof(BaseEntity).IsAssignableFrom(entry.Key.type))
 				{
 					foreach (var entity in entry.Value)
 					{
@@ -116,7 +125,7 @@ public class Entities : IDisposable
 		}
 		else
 		{
-			if (Mapping.TryGetValue(typeof(BaseEntity), out var mapping))
+			if (Mapping.TryGetValue(new(typeof(BaseEntity)), out var mapping))
 			{
 				foreach (var entity in mapping)
 				{
@@ -127,34 +136,135 @@ public class Entities : IDisposable
 
 		return map;
 	}
-	public static T GetOne<T>(bool inherited = false)
+
+	/// <summary>
+	/// Gets all entities of BaseEntity with the option of having them filtered out. If inherited is true, it returns everything spawnable on the server, otherwise ONLY entities with BaseEntity as base class.
+	/// </summary>
+	public static Map<BaseEntity> GetAllFiltered(Func<BaseEntity, bool> filter, bool inherited = false)
+	{
+		if (filter == null)
+		{
+			return default;
+		}
+
+		var map = new Map<BaseEntity>
+		{
+			Pool = Facepunch.Pool.Get<List<BaseEntity>>()
+		};
+
+		if (inherited)
+		{
+			foreach (var entry in Mapping)
+			{
+				if (typeof(BaseEntity).IsAssignableFrom(entry.Key.type))
+				{
+					foreach (var entity in entry.Value)
+					{
+						var ent = entity as BaseEntity;
+
+						if (!filter(ent))
+						{
+							continue;
+						}
+
+						map.Pool.Add(ent);
+					}
+				}
+			}
+		}
+		else
+		{
+			if (Mapping.TryGetValue(new(typeof(BaseEntity)), out var mapping))
+			{
+				foreach (var entity in mapping)
+				{
+					if (entity is BaseEntity result && filter(result))
+					{
+						map.Pool.Add(result);
+					}
+				}
+			}
+		}
+
+		return map;
+	}
+
+	/// <summary>
+	/// Get one sample of a specific entity type, or if inherited is true, any entity type with T as inherited type.
+	/// </summary>
+	public static T GetOne<T>(bool inherited = false) where T : class, new()
 	{
 		using (var map = Get<T>(inherited))
 		{
 			return map.Pool.FirstOrDefault();
 		}
 	}
+
+	/// <summary>
+	/// Maps and stores an entity instance.
+	/// </summary>
+	/// <param name="entity"></param>
 	public static void AddMap(BaseEntity entity)
 	{
-		if (!Mapping.TryGetValue(entity.GetType(), out var map))
+		if (!Mapping.TryGetValue(new(entity.GetType()), out var map))
 		{
 			return;
-			// EntityMapping.Add(entity.GetType(), map = new List<BaseEntity> { entity });
 		}
 
 		map.Add(entity);
 	}
+
+	/// <summary>
+	/// Removes an entity instance from the map.
+	/// </summary>
+	/// <param name="entity"></param>
 	public static void RemoveMap(BaseEntity entity)
 	{
-		if (!Mapping.TryGetValue(entity.GetType(), out var map))
+		if (!Mapping.TryGetValue(new(entity.GetType()), out var map))
 		{
 			return;
 		}
 
 		map.Remove(entity);
+		ComponentCacheBankNonGeneric.OnEntityDestruct(entity);
 	}
 
-	public struct Map<T> : IDisposable
+	public struct EntityType : IEqualityComparer<EntityType>
+	{
+		public Type type;
+
+		public EntityType(Type type)
+		{
+			this.type = type;
+		}
+
+		public override int GetHashCode()
+		{
+			return (type).GetHashCode();
+		}
+
+		public override bool Equals(object obj)
+		{
+			if (obj is EntityType other)
+			{
+				return other.type == type;
+			}
+
+			return base.Equals(obj);
+		}
+
+		public bool Equals(EntityType x, EntityType y)
+		{
+			return x.type == y.type;
+		}
+
+		public int GetHashCode(EntityType obj)
+		{
+			return (obj.type).GetHashCode();
+		}
+	}
+
+	public struct Map<T> : IDisposable where T : class, new()
 	{
 		public List<T> Pool;
 
@@ -186,10 +296,15 @@ public class Entities : IDisposable
 
 		public void Dispose()
 		{
+			if (Pool == null)
+			{
+				return;
+			}
+
 #if DEBUG
 			Logger.Debug($"Cleaned {typeof(T).Name}", 2);
 #endif
-			Facepunch.Pool.FreeList(ref Pool);
+			Facepunch.Pool.FreeUnmanaged(ref Pool);
 		}
 	}
 }

@@ -1,13 +1,5 @@
 ﻿using static Oxide.Plugins.CovalencePlugin;
-using Formatter = Oxide.Core.Libraries.Covalence.Formatter;
 using Logger = Carbon.Logger;
-
-/*
- *
- * Copyright (c) 2022-2023 Carbon Community
- * All rights reserved.
- *
- */
 
 namespace Oxide.Plugins
 {
@@ -82,7 +74,7 @@ namespace Oxide.Core.Libraries.Covalence
 
 		public void UnregisterCommand(string command, Plugin plugin)
 		{
-			Community.Runtime.CorePlugin.cmd.RemoveConsoleCommand(command, plugin);
+			Community.Runtime.Core.cmd.RemoveConsoleCommand(command, plugin);
 		}
 
 		public uint ClientAppId { get; } = 252490U;

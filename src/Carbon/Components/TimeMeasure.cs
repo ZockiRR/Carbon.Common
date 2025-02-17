@@ -1,12 +1,6 @@
-﻿/*
- *
- * Copyright (c) 2022-2024 Carbon Community 
- * All rights reserved.
- *
- */
-
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using Facepunch;
+
 namespace Carbon.Components;
 
 public struct TimeMeasure : IDisposable
@@ -45,7 +39,7 @@ public struct TimeMeasure : IDisposable
 		}
 
 		_watch.Reset();
-		Pool.Free(ref _watch);
+		Pool.FreeUnsafe(ref _watch);
 #endif
 	}
 }

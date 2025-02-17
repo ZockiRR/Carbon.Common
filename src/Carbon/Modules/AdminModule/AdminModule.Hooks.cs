@@ -58,7 +58,12 @@ public partial class AdminModule
 	[Conditional("!MINIMAL")]
 	private void OnPlayerDisconnected(BasePlayer player)
 	{
-		if (PlayersTab.BlindedPlayers.Contains(player)) PlayersTab.BlindedPlayers.Remove(player);
+		Tab.OptionChart.Cache.ClearPlayerViewer(player.userID);
+
+		if (PlayersTab.BlindedPlayers.Contains(player))
+		{
+			PlayersTab.BlindedPlayers.Remove(player);
+		}
 
 		StopSpectating(player);
 	}
@@ -73,8 +78,11 @@ public partial class AdminModule
 			return null;
 		}
 
+		if (!Singleton.HasAccess(owner, "entities.loot_players"))
+		{
+			return null;
+		}
 		OpenContainer(GetPlayerSession(owner), item.contents, null);
-
 		return ItemContainer.CanAcceptResult.CannotAccept;
 	}
 
@@ -86,12 +94,7 @@ public partial class AdminModule
 
 	public static bool AcceptOnBackpack(Item backpack)
 	{
-		if (EntitiesTab.LastContainerLooter == null || EntitiesTab.LastContainerLooter.Player?.inventory?.loot?.containers[0] != backpack.contents)
-		{
-			return false;
-		}
-
-		return true;
+		return EntitiesTab.LastContainerLooter != null && EntitiesTab.LastContainerLooter.Player?.inventory?.loot?.containers[0] == backpack.contents;
 	}
 #endif
 }
