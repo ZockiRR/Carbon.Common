@@ -1,20 +1,10 @@
-﻿using API.Assembly;
-using API.Commands;
-using Carbon.Base.Interfaces;
-using Newtonsoft.Json;
-using Oxide.Game.Rust.Cui;
-
-/*
- *
- * Copyright (c) 2022-2023 Carbon Community
- * All rights reserved.
- *
- */
+﻿using Oxide.Game.Rust.Cui;
 
 namespace Carbon.Core;
+
 #pragma warning disable IDE0051
 
-public partial class CorePlugin : CarbonPlugin
+public partial class CorePlugin
 {
 	[ConsoleCommand("wipeui", "Clears the entire CUI containers and their elements from the caller's client.")]
 	[AuthLevel(2)]
@@ -22,7 +12,7 @@ public partial class CorePlugin : CarbonPlugin
 	{
 		if (arg.Player() is BasePlayer player)
 		{
-			CuiHelper.DestroyActivePanelList(player);
+			arg.ReplyWith($"Cleared {CuiHelper.DestroyActivePanelList(player):n0} CUI panels");
 		}
 		else
 		{

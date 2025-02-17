@@ -1,12 +1,5 @@
 ﻿using Newtonsoft.Json;
 
-/*
- *
- * Copyright (c) 2022-2023 Carbon Community
- * All rights reserved.
- *
- */
-
 namespace Oxide.Core.Libraries;
 
 public class Lang : Library
@@ -38,29 +31,35 @@ public class Lang : Library
 	}
 	public string[] GetLanguages(Plugin plugin = null)
 	{
-		var list = Facepunch.Pool.GetList<string>();
+		var list = Facepunch.Pool.Get<List<string>>();
 
 		foreach (string text in Directory.GetDirectories(Interface.Oxide.LangDirectory))
 		{
 			if (Directory.GetFiles(text).Length != 0 && (plugin == null || (plugin != null && OsEx.File.Exists(Path.Combine(text, plugin.Name + ".json")))))
 			{
-				list.Add(text.Substring(Interface.Oxide.LangDirectory.Length + 1));
+				list.Add(text[(Interface.Oxide.LangDirectory.Length + 1)..]);
 			}
 		}
 
 		var result = list.ToArray();
-		Facepunch.Pool.FreeList(ref list);
+		Facepunch.Pool.FreeUnmanaged(ref list);
 		return result;
 	}
 	public void SetLanguage(string lang, string userId)
 	{
-		if (string.IsNullOrEmpty(lang) || string.IsNullOrEmpty(userId)) return;
-
-		if (Interface.Oxide.Permission.UserExists(userId, out var data))
+		if (string.IsNullOrEmpty(lang) || string.IsNullOrEmpty(userId))
 		{
-			data.Language = lang;
-			Interface.Oxide.Permission.SaveData();
+			return;
 		}
+
+		var data = Interface.Oxide.Permission.GetUserData(userId, true);
+
+		if (!string.IsNullOrEmpty(data.Language) && data.Language.Equals(lang))
+		{
+			return;
+		}
+
+		data.Language = lang;
 	}
 	public void SetServerLanguage(string lang)
 	{
@@ -125,6 +124,15 @@ public class Lang : Library
 		if (newPhrases == phrases || save) SaveMessageFile(plugin.Name, lang);
 	}
 
+	public string GetMessageByLanguage(string key, Plugin plugin, string lang = "en")
+	{
+		if (string.IsNullOrEmpty(key) || plugin == null)
+		{
+			return key;
+		}
+
+		return GetMessage(key, plugin, lang: lang);
+	}
 	public string GetMessage(string key, BaseHookable hookable, string player = null, string lang = null)
 	{
 		if (string.IsNullOrEmpty(lang)) lang = GetLanguage(player);
@@ -137,7 +145,11 @@ public class Lang : Library
 		{
 			try
 			{
-				if (hookable is RustPlugin rustPlugin) rustPlugin.ILoadDefaultMessages();
+				if (hookable is RustPlugin rustPlugin)
+				{
+					rustPlugin.ILoadDefaultMessages();
+				}
+
 				messages = GetMessageFile(hookable.Name, lang);
 
 				if (messages.TryGetValue(key, out phrase))

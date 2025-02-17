@@ -1,14 +1,6 @@
 ﻿using Carbon.Base.Interfaces;
-using HarmonyLib;
 using Defines = Carbon.Core.Defines;
 using Harmony = HarmonyLib.Harmony;
-
-/*
- *
- * Copyright (c) 2022-2024 Carbon Community
- * All rights reserved.
- *
- */
 
 namespace Carbon.Base;
 
@@ -22,6 +14,7 @@ public abstract class BaseModule : BaseHookable
 	public virtual bool ForceDisabled => false;
 
 	public virtual bool ManualCommands => false;
+	public virtual bool ConfigVersionChecks => true;
 
 	public abstract void OnServerInit(bool initial);
 	public abstract void OnPostServerInit(bool initial);
@@ -67,12 +60,9 @@ public abstract class CarbonModule<C, D> : BaseModule, IModule
 	public new virtual string Name => "Not set";
 	public Permission Permissions;
 
-	protected void Puts(object message)
-		=> Logger.Log($"[{Name}] {message}");
-	protected void PutsError(object message, Exception ex = null)
-		=> Logger.Error($"[{Name}] {message}", ex);
-	protected void PutsWarn(object message)
-		=> Logger.Warn($"[{Name}] {message}");
+	protected void Puts(object message) => Logger.Log($"[{Name}] {message}");
+	protected void PutsError(object message, Exception ex = null) => Logger.Error($"[{Name}] {message}", ex);
+	protected void PutsWarn(object message) => Logger.Warn($"[{Name}] {message}");
 
 	public virtual void Dispose()
 	{
@@ -86,7 +76,10 @@ public abstract class CarbonModule<C, D> : BaseModule, IModule
 		base.Name ??= Name;
 		base.HookableType ??= Type;
 
-		if (ForceDisabled) return;
+		if (ForceDisabled)
+		{
+			return;
+		}
 
 		Permissions = Interface.Oxide.Permission;
 
@@ -94,7 +87,10 @@ public abstract class CarbonModule<C, D> : BaseModule, IModule
 	}
 	public virtual bool InitEnd()
 	{
-		if (ForceDisabled || HasInitialized) return false;
+		if (ForceDisabled || HasInitialized)
+		{
+			return false;
+		}
 
 		Community.Runtime.HookManager.LoadHooksFromType(Type);
 
@@ -107,7 +103,11 @@ public abstract class CarbonModule<C, D> : BaseModule, IModule
 				Community.Runtime.HookManager.Subscribe(method.Name, Name);
 
 				var hash = HookStringPool.GetOrAdd(method.Name);
-				if (!Hooks.Contains(hash)) Hooks.Add(hash);
+
+				if (!Hooks.Contains(hash))
+				{
+					Hooks.Add(hash);
+				}
 			}
 		}
 
@@ -135,7 +135,7 @@ public abstract class CarbonModule<C, D> : BaseModule, IModule
 
 		Config ??= new DynamicConfigFile(GetConfigPath());
 		Data ??= new DynamicConfigFile(GetDataPath());
-		Lang ??= new(this);
+		Lang ??= new Lang(this);
 
 		var newConfig = !Config.Exists();
 		var newData = !Data.Exists();
@@ -151,6 +151,7 @@ public abstract class CarbonModule<C, D> : BaseModule, IModule
 			{
 				ModuleConfiguration.Enabled = true;
 			}
+
 			shouldSave = true;
 		}
 		else
@@ -159,7 +160,7 @@ public abstract class CarbonModule<C, D> : BaseModule, IModule
 			{
 				ModuleConfiguration = Config.ReadObject<Configuration>();
 
-				if (ModuleConfiguration.HasConfigStructureChanged())
+				if (ConfigVersionChecks && ModuleConfiguration.HasConfigStructureChanged())
 				{
 					shouldSave = true;
 				}
@@ -171,7 +172,11 @@ public abstract class CarbonModule<C, D> : BaseModule, IModule
 		}
 
 		ConfigInstance = ModuleConfiguration.Config;
-		if (ForceEnabled) ModuleConfiguration.Enabled = true;
+
+		if (ForceEnabled)
+		{
+			ModuleConfiguration.Enabled = true;
+		}
 
 		if (typeof(D) != typeof(EmptyModuleData))
 		{
@@ -193,9 +198,15 @@ public abstract class CarbonModule<C, D> : BaseModule, IModule
 			}
 		}
 
-		if (PreLoadShouldSave(newConfig, newData)) shouldSave = true;
+		if (PreLoadShouldSave(newConfig, newData))
+		{
+			shouldSave = true;
+		}
 
-		if (shouldSave) Save();
+		if (shouldSave)
+		{
+			Save();
+		}
 	}
 	public override void Save()
 	{
@@ -314,7 +325,7 @@ public abstract class CarbonModule<C, D> : BaseModule, IModule
 	public virtual void OnDisabled(bool initialized)
 	{
 		if (ForceDisabled) return;
-		
+
 		OnUnload();
 	}
 	public virtual void OnEnabled(bool initialized)
@@ -370,15 +381,17 @@ public abstract class CarbonModule<C, D> : BaseModule, IModule
 		ModLoader.RemoveCommands(this);
 
 		UnsubscribeAll();
-		Permissions.UnregisterPermissions(this);
+		Permissions?.UnregisterPermissions(this);
 
-		if (Hooks.Count > 0) Puts($"Unsubscribed from {Hooks.Count:n0} {Hooks.Count.Plural("hook", "hooks")}.");
+		if (Hooks.Count > 0)
+		{
+			Puts($"Unsubscribed from {Hooks.Count:n0} {Hooks.Count.Plural("hook", "hooks")}.");
+		}
 
 		DoHarmonyUnpatch();
 	}
 	public override void Shutdown()
 	{
-		Save();
 		OnUnload();
 
 		Community.Runtime.ModuleProcessor.Uninstall(this);

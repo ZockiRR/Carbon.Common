@@ -1,14 +1,6 @@
 ﻿using System.Diagnostics;
 using System.Runtime.CompilerServices;
-using Facepunch.Extend;
 using Newtonsoft.Json;
-
-/*
- *
- * Copyright (c) 2022-2024 Carbon Community
- * All rights reserved.
- *
- */
 
 namespace Carbon.Base;
 
@@ -45,7 +37,7 @@ public class BaseHookable
 		public CachedHook PrimaryHook;
 		public List<CachedHook> Hooks;
 
-		public bool IsValid() => Hooks != null && Hooks.Any();
+		public bool IsValid() => Hooks != null && Hooks.Count > 0;
 		public void RefreshPrimary()
 		{
 			PrimaryHook = Hooks.OrderByDescending(x => x.Parameters.Length).FirstOrDefault();
@@ -64,6 +56,7 @@ public class BaseHookable
 		public bool IsAsync;
 		public bool IsDebugged;
 
+		public int Exceptions;
 		public int LagSpikes;
 		public int TimesFired;
 		public TimeSpan HookTime;
@@ -76,6 +69,7 @@ public class BaseHookable
 
 		public void Reset()
 		{
+			Exceptions = 0;
 			LagSpikes = 0;
 			TimesFired = 0;
 			HookTime = default;
@@ -91,7 +85,7 @@ public class BaseHookable
 			HookTime += hookTime;
 			MemoryUsage += memoryUsed;
 
-			TimesFired++;
+			Interlocked.Increment(ref TimesFired);
 
 			if (IsDebugged)
 			{
@@ -101,7 +95,11 @@ public class BaseHookable
 		public void OnLagSpike(BaseHookable hookable)
 		{
 			hookable.TotalHookLagSpikes++;
-			LagSpikes++;
+			Interlocked.Increment(ref LagSpikes);
+		}
+		public void OnException()
+		{
+			Interlocked.Increment(ref Exceptions);
 		}
 
 		public static CachedHook Make(string hookName, uint hookId, BaseHookable hookable, MethodInfo method)
@@ -136,17 +134,11 @@ public class BaseHookable
 	[JsonProperty]
 	public virtual VersionNumber Version { get; set; }
 
-	[JsonProperty]
-	public TimeSpan TotalHookTime { get; internal set; }
-
-	[JsonProperty]
-	public int TotalHookFires { get; internal set; }
-
-	[JsonProperty]
-	public double TotalMemoryUsed { get; internal set; }
-
-	[JsonProperty]
-	public int TotalHookLagSpikes { get; internal set; }
+	[JsonProperty] public TimeSpan TotalHookTime;
+	[JsonProperty] public int TotalHookFires;
+	[JsonProperty] public double TotalMemoryUsed;
+	[JsonProperty] public int TotalHookLagSpikes;
+	[JsonProperty] public int TotalHookExceptions;
 
 	[JsonProperty]
 	public double Uptime => _initializationTime.GetValueOrDefault();
@@ -204,7 +196,18 @@ public class BaseHookable
 		_trackStopwatch.Reset();
 	}
 
-#endregion
+	protected void OnException(uint hook)
+	{
+		Interlocked.Increment(ref TotalHookExceptions);
+
+		var overrides = HookPool[hook].Hooks;
+		foreach (var element in overrides)
+		{
+			element.OnException();
+		}
+	}
+
+	#endregion
 
 	public virtual async ValueTask OnAsyncServerShutdown()
 	{
@@ -246,6 +249,8 @@ public class BaseHookable
 
 			instance.Hooks.Add(CachedHook.Make(method.Name, id, this, method));
 			instance.RefreshPrimary();
+
+			InternalHooks.Handle(method.Name, true);
 		}
 
 		var methodAttributes = HookableType.GetMethods(flag | BindingFlags.Public);
@@ -254,7 +259,10 @@ public class BaseHookable
 		{
 			var methodAttribute = method.GetCustomAttribute<HookMethodAttribute>();
 
-			if (methodAttribute == null) continue;
+			if (methodAttribute == null)
+			{
+				continue;
+			}
 
 			var id = HookStringPool.GetOrAdd(string.IsNullOrEmpty(methodAttribute.Name) ? method.Name : methodAttribute.Name);
 
@@ -288,22 +296,34 @@ public class BaseHookable
 
 	public void Subscribe(string hook)
 	{
-		if (IgnoredHooks == null) return;
+		if (IgnoredHooks == null)
+		{
+			return;
+		}
 
 		var hash = HookStringPool.GetOrAdd(hook);
 
-		if (!IgnoredHooks.Contains(hash)) return;
+		if (!IgnoredHooks.Contains(hash))
+		{
+			return;
+		}
 
 		Community.Runtime.HookManager.Subscribe(hook, Name);
 		IgnoredHooks.Remove(hash);
 	}
 	public void Unsubscribe(string hook)
 	{
-		if (IgnoredHooks == null) return;
+		if (IgnoredHooks == null)
+		{
+			return;
+		}
 
 		var hash = HookStringPool.GetOrAdd(hook);
 
-		if (IgnoredHooks.Contains(hash)) return;
+		if (IgnoredHooks.Contains(hash))
+		{
+			return;
+		}
 
 		Community.Runtime.HookManager.Unsubscribe(hook, Name);
 		IgnoredHooks.Add(hash);

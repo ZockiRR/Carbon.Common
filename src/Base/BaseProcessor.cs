@@ -1,9 +1,4 @@
-﻿/*
- *
- * Copyright (c) 2022-2024 Carbon Community
- * All rights reserved.
- *
- */
+﻿using Facepunch;
 
 namespace Carbon.Base;
 
@@ -43,7 +38,7 @@ public abstract class BaseProcessor : FacepunchBehaviour, IDisposable, IBaseProc
 
 		IsInitialized = true;
 
-		_wfsInstance = new WaitForSeconds(Rate);
+		RefreshRate();
 
 		StopAllCoroutines();
 		StartCoroutine(Run());
@@ -149,7 +144,10 @@ public abstract class BaseProcessor : FacepunchBehaviour, IDisposable, IBaseProc
 	}
 	public virtual void Prepare(string id, string file)
 	{
-		if (IgnoreList.Contains(file)) return;
+		if (string.IsNullOrEmpty(id) || string.IsNullOrEmpty(file) || IgnoreList.Contains(file))
+		{
+			return;
+		}
 
 		if (!string.IsNullOrEmpty(file))
 		{
@@ -160,8 +158,6 @@ public abstract class BaseProcessor : FacepunchBehaviour, IDisposable, IBaseProc
 				return;
 			}
 		}
-
-		Logger.Debug($" Loading plugin '{id}'...", 1);
 
 		Remove(id);
 
@@ -195,7 +191,7 @@ public abstract class BaseProcessor : FacepunchBehaviour, IDisposable, IBaseProc
 			catch (Exception ex) { Logger.Error($" Processor error: '{item.Key}'", ex); }
 		}
 
-		var temp = PoolEx.GetDictionary<string, IBaseProcessor.IProcess>();
+		var temp = Pool.Get<Dictionary<string, IBaseProcessor.IProcess>>();
 
 		foreach (var instance in InstanceBuffer)
 		{
@@ -208,11 +204,16 @@ public abstract class BaseProcessor : FacepunchBehaviour, IDisposable, IBaseProc
 		}
 		else
 		{
-			foreach (var instance in temp.Where(instance => !except.Any(instance.Value.File.Contains)))
+			foreach (var instance in temp)
 			{
-				InstanceBuffer.Remove(instance.Key);
+				if (!except.Any(instance.Value.File.Contains))
+				{
+					InstanceBuffer.Remove(instance.Key);
+				}
 			}
 		}
+
+		Pool.FreeUnmanaged(ref temp);
 	}
 	public virtual void Ignore(string file)
 	{
@@ -302,6 +303,11 @@ public abstract class BaseProcessor : FacepunchBehaviour, IDisposable, IBaseProc
 			Logger.Debug(2, $"[{Name}] File deleted: {path}");
 			mod.MarkDeleted();
 		}
+	}
+
+	public void RefreshRate()
+	{
+		_wfsInstance = new WaitForSeconds(Rate);
 	}
 
 	public bool IsBlacklisted(string path)

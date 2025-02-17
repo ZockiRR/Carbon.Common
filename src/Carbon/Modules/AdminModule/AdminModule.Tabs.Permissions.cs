@@ -1,15 +1,10 @@
 ﻿#if !MINIMAL
 
-/*
-*
- * Copyright (c) 2022-2023 Carbon Community
- * All rights reserved.
- *
- */
+using ProtoBuf;
 
 namespace Carbon.Modules;
 
-public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
+public partial class AdminModule
 {
 	public class PermissionsTab
 	{
@@ -250,14 +245,14 @@ public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
 					}, null);
 				}, (ap) => Tab.OptionButton.Types.Important), new Tab.OptionButton("Edit", ap =>
 				{
-					var temp = Facepunch.Pool.GetList<string>();
+					var temp = Facepunch.Pool.Get<List<string>>();
 					var groups = Community.Runtime.Core.permission.GetGroups();
 					temp.Add("None");
 					temp.AddRange(groups);
 					temp.Remove(selectedGroup);
 
 					var array = temp.ToArray();
-					Facepunch.Pool.FreeList(ref temp);
+					Facepunch.Pool.FreeUnmanaged(ref temp);
 
 					var parent = permission.GetGroupParent(selectedGroup);
 					var parentIndex = Array.IndexOf(array, parent);
@@ -287,13 +282,13 @@ public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
 				tab.AddButtonArray(2,
 					new Tab.OptionButton("Duplicate Group", ap =>
 					{
-						var temp = Facepunch.Pool.GetList<string>();
+						var temp = Facepunch.Pool.Get<List<string>>();
 						var groups = Community.Runtime.Core.permission.GetGroups();
 						temp.Add("None");
 						temp.AddRange(groups);
 
 						var array = temp.ToArray();
-						Facepunch.Pool.FreeList(ref temp);
+						Facepunch.Pool.FreeUnmanaged(ref temp);
 
 						Singleton.Modal.Open(ap.Player, "Duplicate Group", new Dictionary<string, ModalModule.Modal.Field>
 						{
@@ -512,9 +507,15 @@ public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
 		public static void GeneratePermissions(Tab tab,  PlayerSession ap, Permission perms, BaseHookable hookable, KeyValuePair<string, UserData> player, string selectedGroup)
 		{
 			var grantAllStatus = ap.GetStorage(tab, "toggleall", true);
+			var filter = ap.GetStorage(tab, "permfilter", string.Empty)?.Trim().ToLower();
 
 			tab.ClearColumn(3);
 			tab.AddName(3, "Permissions", TextAnchor.MiddleLeft);
+			tab.AddInput(3, "Search", ap => ap.GetStorage(tab, "permfilter", string.Empty), (ap, args) =>
+			{
+				ap.SetStorage(tab, "permfilter", args.ToString(" "));
+				GeneratePermissions(tab, ap, perms, hookable, player, selectedGroup);
+			});
 			tab.AddButton(3, grantAllStatus ? "Grant All" : "Revoke All", ap =>
 			{
 				foreach (var perm in perms.GetPermissions(hookable))
@@ -554,6 +555,11 @@ public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
 
 			foreach (var perm in perms.GetPermissions(hookable))
 			{
+				if (!string.IsNullOrEmpty(filter) && !perm.Contains(filter, CompareOptions.OrdinalIgnoreCase))
+				{
+					continue;
+				}
+
 				if (string.IsNullOrEmpty(selectedGroup))
 				{
 					var isInherited = false;
@@ -605,13 +611,13 @@ public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
 
 				tab.AddButton(1, "Add Group", ap =>
 				{
-					var temp = Facepunch.Pool.GetList<string>();
+					var temp = Facepunch.Pool.Get<List<string>>();
 					var groups = Community.Runtime.Core.permission.GetGroups();
 					temp.Add("None");
 					temp.AddRange(groups);
 
 					var array = temp.ToArray();
-					Facepunch.Pool.FreeList(ref temp);
+					Facepunch.Pool.FreeUnmanaged(ref temp);
 
 					Singleton.Modal.Open(ap.Player, "Create Group", new Dictionary<string, ModalModule.Modal.Field>()
 					{

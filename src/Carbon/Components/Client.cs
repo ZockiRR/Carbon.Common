@@ -1,11 +1,4 @@
-﻿/*
- *
- * Copyright (c) 2022-2024 Carbon Community
- * All rights reserved.
- *
- */
-
-namespace Carbon.Client;
+﻿namespace Carbon.Client;
 
 public struct Client
 {
@@ -30,16 +23,15 @@ public struct Client
 
 		if (Config.Enabled)
 		{
-			CorePlugin.RecoilOverrider.Initialize();
-
 			ProcessPatches();
+			Config.RefreshAddonCache();
 		}
 
 		if (Config.Enabled)
 		{
 			Logger.Log($" C4C: Carbon Client ready.");
 
-			Analytics.carbon_client_init();
+			// Analytics.carbon_client_init();
 		}
 		else
 		{
@@ -65,6 +57,6 @@ public struct Client
 
 	public static void ProcessPatches()
 	{
-		Community.Runtime.CarbonClientManager.ApplyPatch();
+		Community.Runtime.CarbonClient.ApplyPatch();
 	}
 }

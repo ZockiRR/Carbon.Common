@@ -1,14 +1,42 @@
-﻿/*
- *
- * Copyright (c) 2022-2023 Carbon Community
- * All rights reserved.
- *
- */
+﻿namespace Carbon.Core;
 
-namespace Carbon.Core;
-
-public partial class CorePlugin : CarbonPlugin
+public partial class CorePlugin
 {
+#if !MINIMAL
+	[Conditional("!MINIMAL")]
+	[ConsoleCommand("editconfig", "When ran by an admin client, the Carbon Admin module will open up a config editor.")]
+	private void EditConfig(ConsoleSystem.Arg arg)
+	{
+		if (arg.Player() is not BasePlayer player)
+		{
+			arg.ReplyWith("Only admin clients can run this command");
+			return;
+		}
+
+		var file = arg.GetString(0);
+		if (!OsEx.File.Exists(file))
+		{
+			arg.ReplyWith($"File '{file}' does not exist");
+			return;
+		}
+
+		AdminModule.Singleton.SetTab(player, AdminModule.ConfigEditor.Make(OsEx.File.ReadText(file), (_, _) =>
+		{
+			AdminModule.Singleton.SetTab(player, 0);
+			AdminModule.Singleton.Close(player);
+		}, (_, jobj) =>
+		{
+			OsEx.File.Create(file, jobj.ToString(Newtonsoft.Json.Formatting.Indented));
+			AdminModule.Singleton.SetTab(player, 0);
+			AdminModule.Singleton.Close(player);
+		}, null, true));
+	}
+#endif
+
+	[CommandVar("developermode", "Enables developer mode which grants a few features that are designed and used by the developers.")]
+	[AuthLevel(2)]
+	private bool DeveloperMode { get { return Community.Runtime.Config.DeveloperMode; } set { Community.Runtime.Config.DeveloperMode = value; Community.Runtime.SaveConfig(); } }
+
 	[ConsoleCommand("loadconfig", "Loads Carbon config from file.")]
 	[AuthLevel(2)]
 	private void CarbonLoadConfig(ConsoleSystem.Arg arg)
@@ -55,10 +83,6 @@ public partial class CorePlugin : CarbonPlugin
 		}
 	}
 
-	[CommandVar("harmonywatchers", "When disabled, you must load/unload Harmony mods manually with `c.harmonyload` or `c.harmonyunload`.")]
-	[AuthLevel(2)]
-	private bool HarmonyWatchers { get { return Community.Runtime.Config.Watchers.HarmonyWatchers; } set { Community.Runtime.Config.Watchers.HarmonyWatchers = value; Community.Runtime.SaveConfig(); } }
-
 	[CommandVar("modulewatchers", "When disabled, modules only get loaded when the server boots.")]
 	[AuthLevel(2)]
 	private bool ModuleWatchers { get { return Community.Runtime.Config.Watchers.ModuleWatchers; } set { Community.Runtime.Config.Watchers.ModuleWatchers = value; Community.Runtime.SaveConfig(); } }
@@ -90,6 +114,35 @@ public partial class CorePlugin : CarbonPlugin
 	[CommandVar("logsplitsize", "The size for each log (in megabytes) required for it to be split into separate chunks.")]
 	[AuthLevel(2)]
 	private double LogSplitSize { get { return Community.Runtime.Config.Logging.LogSplitSize; } set { Community.Runtime.Config.Logging.LogSplitSize = value; Community.Runtime.SaveConfig(); } }
+
+	[CommandVar("scriptprocessrate", "The speed of detecting local file changes for items in the carbon/plugins directory.")]
+	[AuthLevel(2)]
+	private float ScriptProcessingRate
+	{
+		get => Community.Runtime.Config.Processors.ScriptProcessingRate;
+		set
+		{
+			Community.Runtime.Config.Processors.ScriptProcessingRate = value;
+			Community.Runtime.ScriptProcessor.RefreshRate();
+			Community.Runtime.SaveConfig();
+		}
+	}
+
+	[CommandVar("zipscriptprocessrate", "The speed of detecting local file changes for zipscript items in the carbon/plugins directory.")]
+	[AuthLevel(2)]
+	private float ZipScriptProcessingRate
+	{
+		get => Community.Runtime.Config.Processors.ZipScriptProcessingRate;
+		set
+		{
+			Community.Runtime.Config.Processors.ZipScriptProcessingRate = value;
+			Community.Runtime.ZipScriptProcessor.RefreshRate();
+#if DEBUG
+			Community.Runtime.ZipDevScriptProcessor.RefreshRate();
+#endif
+			Community.Runtime.SaveConfig();
+		}
+	}
 
 #if WIN
 	[CommandVar("consoleinfo", "Show the Windows-only Carbon information at the bottom of the console.")]
@@ -135,6 +188,16 @@ public partial class CorePlugin : CarbonPlugin
 			return;
 		}
 
+		if (alias.Equals(command, StringComparison.OrdinalIgnoreCase))
+		{
+			arg.ReplyWith("Don't be silly");
+			return;
+		}
+
+		var warn = ConsoleSystem.Index.All.Any(x => x.FullName.Equals(alias, StringComparison.OrdinalIgnoreCase))
+			? " (BEWARE! The alias you used is the name of an existent Rust command. Unassign this alias to make it accessible.)"
+			: null;
+
 		if (!Community.Runtime.Config.IsValidAlias(alias, out var reason))
 		{
 			arg.ReplyWith($"Invalid alias detected. Using '{reason}' is prohibited.");
@@ -143,14 +206,14 @@ public partial class CorePlugin : CarbonPlugin
 
 		if (Community.Runtime.Config.Aliases.TryGetValue(alias, out var existentCommand))
 		{
-			arg.ReplyWith($"Overriding alias '{alias}' -> {command}:\n Old: {existentCommand}");
+			arg.ReplyWith($"Overriding alias '{alias}' -> {command}:\n Old: {existentCommand}{warn}");
 			Community.Runtime.Config.Aliases[alias] = command;
 			Community.Runtime.SaveConfig();
 			return;
 		}
 
 		Community.Runtime.Config.Aliases[alias] = command;
-		arg.ReplyWith($"Assigned alias '{alias}' -> {command}");
+		arg.ReplyWith($"Assigned alias '{alias}' -> {command}{warn}");
 		Community.Runtime.SaveConfig();
 	}
 
@@ -182,5 +245,53 @@ public partial class CorePlugin : CarbonPlugin
 	private void Aliases(ConsoleSystem.Arg arg)
 	{
 		arg.ReplyWith($"Found {Community.Runtime.Config.Aliases.Count:n0} {Community.Runtime.Config.Aliases.Count.Plural("alias", "aliases")}:\n{Community.Runtime.Config.Aliases.Select(x => $" {x.Key} -> {x.Value}").ToString("\n")}");
+	}
+
+	[ConsoleCommand("changeversion", "It changes the current Carbon version you're running. Next reboot will swap to the overriden version. Run `c.changeversion` for syntax.")]
+	[AuthLevel(2)]
+	private void ChangeVersion(ConsoleSystem.Arg arg)
+	{
+		if (!arg.HasArgs())
+		{
+			arg.ReplyWith($"Version override change syntax:\n" +
+			              $"eg. c.changeversion rustbeta_staging Debug\n" +
+			              $"eg. c.changeversion production Minimal\n"+
+			              $"eg. c.changeversion reset\n" +
+			              $"NOTE: When you've set the version override, self updating will enable itself automatically as it's required for the version change process.");
+			return;
+		}
+
+		var txt = Path.Combine(Defines.GetTempFolder(), "versionoverride.txt");
+
+		if (arg.GetString(0).Equals("reset", StringComparison.OrdinalIgnoreCase))
+		{
+			OsEx.File.Delete(txt);
+			arg.ReplyWith("Reset version change. Next server reboot won't change your current Carbon version.");
+			return;
+		}
+
+		var tag = arg.GetString(0, "edge").Replace("_build", string.Empty);
+		var config = arg.GetString(1, "Debug");
+		var os =
+#if UNIX
+			"Linux";
+#else
+			"Windows";
+#endif
+		var extension =
+#if UNIX
+			"tar.gz";
+#else
+			"zip";
+#endif
+		var url = $"http://github.com/CarbonCommunity/Carbon/releases/download/{tag}_build/Carbon.{os}.{config}.{extension}";
+		OsEx.File.Create(txt, url);
+		arg.ReplyWith($"Overriding Carbon version to {tag} ({config}). Next server reboot will swap to the overriden version.");
+
+		if (!Community.Runtime.Config.SelfUpdating.Enabled)
+		{
+			Community.Runtime.Config.SelfUpdating.Enabled = true;
+			Community.Runtime.SaveConfig();
+		}
 	}
 }

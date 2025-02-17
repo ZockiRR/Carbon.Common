@@ -1,17 +1,10 @@
 ﻿using API.Events;
-using Carbon.Client;
+using Facepunch;
 using Application = UnityEngine.Application;
 using CommandLine = Carbon.Components.CommandLine;
-using Timer = Oxide.Plugins.Timer;
-
-/*
- *
- * Copyright (c) 2022-2023 Carbon Community
- * All rights reserved.
- *
- */
 
 namespace Carbon.Core;
+
 #pragma warning disable IDE0051
 
 public partial class CorePlugin : CarbonPlugin
@@ -27,18 +20,27 @@ public partial class CorePlugin : CarbonPlugin
 
 		foreach (var file in OsEx.Folder.GetFilesWithExtension(Defines.GetScriptsFolder(), "cs", config.Watchers.ScriptWatcherOption))
 		{
-			if (processor.IsBlacklisted(file)) continue;
+			if (processor.IsBlacklisted(file))
+			{
+				continue;
+			}
 
 			var id = Path.GetFileNameWithoutExtension(file);
-			if (!OrderedFiles.ContainsKey(id)) OrderedFiles.Add(id, file);
+
+			if (!OrderedFiles.ContainsKey(id))
+			{
+				OrderedFiles.Add(id, file);
+			}
 		}
 	}
 
 	public static KeyValuePair<string, string> GetPluginPath(string shortName)
 	{
-		foreach (var file in OrderedFiles)
+		RefreshOrderedFiles();
+
+		foreach (var file in OrderedFiles.Where(file => file.Key.Equals(shortName, StringComparison.InvariantCultureIgnoreCase)))
 		{
-			if (file.Key.Equals(shortName, StringComparison.InvariantCultureIgnoreCase)) return new KeyValuePair<string, string>(file.Key, file.Value);
+			return new KeyValuePair<string, string>(file.Key, file.Value);
 		}
 
 		return default;
@@ -80,7 +82,11 @@ public partial class CorePlugin : CarbonPlugin
 
 		timer.Every(5f, () =>
 		{
-			if (Community.Runtime == null || Logger.CoreLog == null || !Logger.CoreLog.HasInit || Logger.CoreLog._buffer.Count == 0 || Community.Runtime.Config.Logging.LogFileMode != 1) return;
+			if (Community.Runtime == null || Logger.CoreLog == null || !Logger.CoreLog.HasInit || Logger.CoreLog._buffer.Count == 0 || Community.Runtime.Config.Logging.LogFileMode != 1)
+			{
+				return;
+			}
+
 			Logger.CoreLog.Flush();
 		});
 
@@ -134,45 +140,19 @@ public partial class CorePlugin : CarbonPlugin
 #endif
 	}
 
-	private void OnPlayerDisconnected(BasePlayer player, string reason)
-	{
-		// OnUserDisconnected
-		HookCaller.CallStaticHook(649612044, player?.AsIPlayer(), reason);
-
-		if (player.IsAdmin && !player.IsOnGround())
-		{
-			var newPosition = player.transform.position;
-
-			if (UnityEngine.Physics.Raycast(newPosition, Vector3.down, out var hit, float.MaxValue, ~0, queryTriggerInteraction: QueryTriggerInteraction.Ignore))
-			{
-				newPosition.y = hit.point.y;
-
-				if (Vector3.Distance(player.transform.position, newPosition) > 3.5f)
-				{
-					player.SetServerFall(false);
-					player.Teleport(newPosition);
-					player.estimatedVelocity = Vector3.zero;
-					NextFrame(() =>
-					{
-						if (player != null)
-						{
-							player.SetServerFall(true);
-						}
-					});
-					Logger.Warn($"Moved admin player {player.net.connection} on the object underneath so it doesn't die from fall damage.");
-				}
-			}
-		}
-
-		Community.Runtime.CarbonClientManager.OnDisconnected(player.Connection);
-	}
 	private void OnPluginLoaded(Plugin plugin)
 	{
-		Community.Runtime.Events.Trigger(CarbonEvent.PluginLoaded, new CarbonEventArgs(plugin));
+		var eventArg = Pool.Get<CarbonEventArgs>();
+		eventArg.Init(plugin);
+		Community.Runtime.Events.Trigger(CarbonEvent.PluginLoaded, eventArg);
+		Pool.Free(ref eventArg);
 	}
 	private void OnPluginUnloaded(Plugin plugin)
 	{
-		Community.Runtime.Events.Trigger(CarbonEvent.PluginUnloaded, new CarbonEventArgs(plugin));
+		var eventArg = Pool.Get<CarbonEventArgs>();
+		eventArg.Init(plugin);
+		Community.Runtime.Events.Trigger(CarbonEvent.PluginUnloaded, eventArg);
+		Pool.Free(ref eventArg);
 	}
 	private void OnEntitySpawned(BaseEntity entity)
 	{

@@ -2,15 +2,12 @@
 using API.Logger;
 using ILogger = API.Logger.ILogger;
 
-/*
- *
- * Copyright (c) 2022-2024 Carbon Community
- * All rights reserved.
- *
- */
-
 namespace Carbon;
 
+/// <summary>
+/// Carbon base logger with the purpose of writing to console, RCon and file.
+/// Provides various useful eventful actions.
+/// </summary>
 public sealed class Logger : ILogger
 {
 	public static FileLogger CoreLog { get; set; }
@@ -41,52 +38,10 @@ public sealed class Logger : ILogger
 		if (severity != Severity.Debug)
 		{
 			Severity minSeverity = Community.Runtime?.Config?.Logging.LogSeverity ?? Severity.Notice;
-			if (severity > minSeverity) return;
-		}
 
-		static void PrintLog(string text, Severity severity)
-		{
-			if (ThreadEx.IsOnMainThread())
+			if (severity > minSeverity)
 			{
-				switch (severity)
-				{
-					case Severity.Error:
-						UnityEngine.Debug.LogError(text);
-						break;
-
-					case Severity.Warning:
-						UnityEngine.Debug.LogWarning(text);
-						break;
-
-					case Severity.Notice:
-					case Severity.Debug:
-						UnityEngine.Debug.Log(text);
-						break;
-				}
-			}
-			else
-			{
-				var threadedColor = Console.ForegroundColor;
-
-				switch (severity)
-				{
-					case Severity.Error:
-						threadedColor = ConsoleColor.Red;
-						break;
-
-					case Severity.Warning:
-						threadedColor = ConsoleColor.Yellow;
-						break;
-
-					case Severity.Notice:
-					case Severity.Debug:
-						break;
-				}
-
-				var color = Console.ForegroundColor;
-				Console.ForegroundColor = threadedColor;
-				Console.WriteLine(text);
-				Console.ForegroundColor = color;
+				return;
 			}
 		}
 
@@ -107,12 +62,20 @@ public sealed class Logger : ILogger
 				{
 					var exceptionResult = $"({dex?.Message})\n{dex.GetFullStackTrace(false)}";
 					CoreLog.QueueLog($"[ERRO] {textMessage} {exceptionResult}");
-					if (nativeLog) PrintLog($"{textMessage} {exceptionResult}", severity);
+
+					if (nativeLog)
+					{
+						PrintLog($"{textMessage} {exceptionResult}", severity);
+					}
 				}
 				else
 				{
 					CoreLog.QueueLog($"[ERRO] {textMessage}");
-					if (nativeLog) PrintLog(textMessage, severity);
+
+					if (nativeLog)
+					{
+						PrintLog(textMessage, severity);
+					}
 				}
 
 				OnErrorCallback?.Invoke(textMessage, dex, verbosity);
@@ -120,26 +83,91 @@ public sealed class Logger : ILogger
 
 			case Severity.Warning:
 				CoreLog.QueueLog($"[WARN] {textMessage}");
-				if (nativeLog) PrintLog(textMessage, severity);
+
+				if (nativeLog)
+				{
+					PrintLog(textMessage, severity);
+				}
+
 				OnWarningCallback?.Invoke(textMessage, verbosity);
 				break;
 
 			case Severity.Notice:
 				CoreLog.QueueLog($"[INFO] {textMessage}");
-				if (nativeLog) PrintLog(textMessage, severity);
+
+				if (nativeLog)
+				{
+					PrintLog(textMessage, severity);
+				}
+
 				OnNoticeCallback?.Invoke(textMessage, verbosity);
 				break;
 
 			case Severity.Debug:
 				int minVerbosity = Community.Runtime?.Config?.Logging.LogVerbosity ?? -1;
-				if (verbosity > minVerbosity) break;
+
+				if (verbosity > minVerbosity)
+				{
+					break;
+				}
+
 				CoreLog.QueueLog($"[INFO] {textMessage}");
-				if (nativeLog) PrintLog(textMessage, severity);
+
+				if (nativeLog)
+				{
+					PrintLog(textMessage, severity);
+				}
+
 				OnDebugCallback?.Invoke(textMessage, verbosity);
 				break;
 
 			default:
 				throw new Exception($"Severity {severity} not implemented.");
+		}
+	}
+
+	private static void PrintLog(string text, Severity severity)
+	{
+		if (!ThreadEx.IsOnMainThread())
+		{
+			var threadedColor = Console.ForegroundColor;
+
+			switch (severity)
+			{
+				case Severity.Error:
+					threadedColor = ConsoleColor.Red;
+					break;
+
+				case Severity.Warning:
+					threadedColor = ConsoleColor.Yellow;
+					break;
+
+				case Severity.Notice:
+				case Severity.Debug:
+					threadedColor = ConsoleColor.Gray;
+					break;
+			}
+
+			var color = Console.ForegroundColor;
+			Console.ForegroundColor = threadedColor;
+			Console.WriteLine(text);
+			Console.ForegroundColor = color;
+		}
+
+		switch (severity)
+		{
+			case Severity.Error:
+				UnityEngine.Debug.LogError(text);
+				break;
+
+			case Severity.Warning:
+				UnityEngine.Debug.LogWarning(text);
+				break;
+
+			case Severity.Notice:
+			case Severity.Debug:
+				UnityEngine.Debug.Log(text);
+				break;
 		}
 	}
 
@@ -204,7 +232,9 @@ public sealed class Logger : ILogger
 	public static void Error(object message, Exception ex = null)
 		=> Write(Severity.Error, message, ex);
 
-	// Interface implementation workaround for static methods.
+	/// <summary>
+	/// Implementation of console writing the message logs taking severity and exception information into account.
+	/// </summary>
 	void ILogger.Console(string message, Severity severity, Exception exception)
 	{
 		switch (severity)

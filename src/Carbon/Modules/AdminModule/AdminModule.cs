@@ -5,25 +5,19 @@ using static ConsoleSystem;
 using Color = UnityEngine.Color;
 using StringEx = Carbon.Extensions.StringEx;
 
-/*
- *
- * Copyright (c) 2022-2024 Carbon Community
- * All rights reserved.
- *
- */
-
 namespace Carbon.Modules;
+
 #pragma warning disable IDE0051
 
 public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
 {
 	public override string Name => "Admin";
-	public override VersionNumber Version => new(1, 7, 0);
+	public override VersionNumber Version => new(1, 8, 0);
 	public override Type Type => typeof(AdminModule);
 
-	#if MINIMAL
+#if MINIMAL
 	public override bool ForceDisabled => true;
-	#endif
+#endif
 
 #if !MINIMAL
 	public override bool ForceEnabled => true;
@@ -36,6 +30,7 @@ public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
 	public ColorPickerModule ColorPicker;
 	public DatePickerModule DatePicker;
 	public ModalModule Modal;
+	public FileModule File;
 
 	public readonly Handler Handler = new();
 
@@ -121,6 +116,7 @@ public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
 		ColorPicker = GetModule<ColorPickerModule>();
 		DatePicker = GetModule<DatePickerModule>();
 		Modal = GetModule<ModalModule>();
+		File = GetModule<FileModule>();
 
 		Unsubscribe("OnPluginLoaded");
 		Unsubscribe("OnPluginUnloaded");
@@ -172,7 +168,18 @@ public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
 				}
 
 				var tab = GetTab(player);
-				tab?.OnChange?.Invoke(ap, tab);
+
+				try
+				{
+					tab?.OnChange?.Invoke(ap, tab);
+				}
+				catch(Exception ex)
+				{
+					Logger.Error($"Failed OnChange callback for tab '{tab?.Name}[{tab?.Id}], falling back to default tab", ex);
+
+					ap.SelectedTab = Tabs.FirstOrDefault(x => HasAccess(player, x.Access));
+					ap.Clear();
+				}
 
 				DrawCursorLocker(player);
 				Draw(player);
@@ -223,6 +230,12 @@ public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
 		PluginsTab.ServerOwner.Save();
 	}
 
+	public override void Reload()
+	{
+		base.Reload();
+		OnEnabled(true);
+	}
+
 	public override Dictionary<string, Dictionary<string, string>> GetDefaultPhrases()
 	{
 		return new Dictionary<string, Dictionary<string, string>>
@@ -263,8 +276,9 @@ public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
 				["nocontent"] = "There are no options available.\nSelect a sub-tab to populate this area (if available).",
 				["consoleinfo"] = "Show Console Info",
 				["consoleinfo_help"] = "Show the Windows-only Carbon information at the bottom of the console.",
-				["playerdefgroup"] = "Player Default Group",
-				["admindefgroup"] = "Admin Default Group",
+				["playerdefgroup"] = "Player Group",
+				["admindefgroup"] = "Admin Group",
+				["moderatordefgroup"] = "Moderator Group",
 				["permissions"] = "Permissions",
 				["debugging"] = "Debugging",
 				["scriptdebugorigin"] = "Script Debugging Origin",
@@ -709,7 +723,7 @@ public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
 				xMin: 0.2f, xMax: 0.8f, yMin: 0.2f, yMax: 0.8f);
 		}
 	}
-	public void TabPanelDropdown(CUI cui, PlayerSession.Page page, CuiElementContainer container, string parent, string text, string command, float height, float offset, int index, string[] options, string[] optionsIcons, float optionsIconsScale, bool display, Tab.OptionButton.Types type = Tab.OptionButton.Types.Selected)
+	public void TabPanelDropdown(CUI cui, PlayerSession.Page page, CuiElementContainer container, string parent, string text, string command, float height, float offset, int index, string[] options, string[] optionsIcons, bool display, Tab.OptionButton.Types type = Tab.OptionButton.Types.Selected)
 	{
 		var color = type switch
 		{
@@ -759,11 +773,11 @@ public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
 		cui.CreateImage(container, button, "fade", Cache.CUI.WhiteColor);
 
 		cui.CreateText(container, button, "1 1 1 0.7", options[index], 10,
-			xMin: string.IsNullOrEmpty(icon) ? 0.02f : 0.085f, xMax: 1f, yMin: 0f, yMax: 1f, align: TextAnchor.MiddleLeft);
+			xMin: string.IsNullOrEmpty(icon) ? 0.035f : 0.09f, xMax: 1f, yMin: 0f, yMax: 1f, align: TextAnchor.MiddleLeft);
 
 		if (!string.IsNullOrEmpty(icon))
 		{
-			cui.CreateImage(container, button, icon, optionsIconsScale, "1 1 1 0.7",
+			cui.CreateImage(container, button, icon, "1 1 1 0.7",
 				xMin: iconXmin, xMax: iconXmax, yMin: iconYmin, yMax: iconYmax);
 		}
 
@@ -804,7 +818,7 @@ public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
 
 				if (!string.IsNullOrEmpty(subIcon))
 				{
-					cui.CreateImage(container, subButton, subIcon, optionsIconsScale, isSelected ? "1 1 1 0.7" : "1 1 1 0.4",
+					cui.CreateImage(container, subButton, subIcon, isSelected ? "1 1 1 0.7" : "1 1 1 0.4",
 						xMin: iconXmin, xMax: iconXmax, yMin: iconYmin, yMax: iconYmax);
 				}
 
@@ -1067,7 +1081,7 @@ public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
 				xMin: 0, xMax: toggleButtonScale, yMin: 0, yMax: 0.015f);
 		}
 
-		using var split = TemporaryArray<string>.New(color.Split(' '));
+		using var split = TempArray<string>.New(color.Split(' '));
 		cui.CreateProtectedButton(container, parent,
 			color: color,
 			textColor: "1 1 1 1",
@@ -1441,7 +1455,7 @@ public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
 											break;
 
 										case Tab.OptionDropdown dropdown:
-											TabPanelDropdown(cui, ap._selectedDropdownPage, container, panel, dropdown.Name, PanelId + $".callaction {i} {actualI}", rowHeight, rowIndex, dropdown.Index.Invoke(ap), dropdown.Options, dropdown.OptionsIcons, dropdown.OptionsIconScale, ap._selectedDropdown == dropdown);
+											TabPanelDropdown(cui, ap._selectedDropdownPage, container, panel, dropdown.Name, PanelId + $".callaction {i} {actualI}", rowHeight, rowIndex, dropdown.Index.Invoke(ap), dropdown.Options, dropdown.OptionsIcons, ap._selectedDropdown == dropdown);
 											HandleReveal(DataInstance.Colors.OptionWidth);
 											break;
 
@@ -2167,7 +2181,7 @@ public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
 		}
 
 		var skip = arg.GetInt(0);
-		var players = BasePlayer.allPlayerList.Concat(BasePlayer.bots).Where(x => x != player);
+		var players = BasePlayer.allPlayerList.Where(x => x != player);
 		var index = players.IndexOf(spectatedPlayer) + skip;
 
 		var lastIndex = players.Count() - 1;

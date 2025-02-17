@@ -1,14 +1,10 @@
-﻿/*
- *
- * Copyright (c) 2022-2023 Carbon Community
- * All rights reserved.
- *
- */
+﻿using Newtonsoft.Json;
 
 namespace Carbon.Core;
+
 #pragma warning disable IDE0051
 
-public partial class CorePlugin : CarbonPlugin
+public partial class CorePlugin
 {
 #if !MINIMAL
 	[CommandVar("isforcemodded", help: "Is the server forcefully set to modded due to options affecting significant gameplay changes in Carbon Auto?")]
@@ -84,7 +80,7 @@ public partial class CorePlugin : CarbonPlugin
 				return;
 			}
 
-			if (_ovenBlacklist != value)
+			if (_ovenBlacklist != value || OvenBlacklistCache == null)
 			{
 				OvenBlacklistCache = value.SplitEnumerable(',');
 			}
@@ -109,9 +105,45 @@ public partial class CorePlugin : CarbonPlugin
 	[AuthLevel(2)]
 	public float OvenBlacklistTemperatureMultiplier = -1;
 
+	[CarbonAutoVar("notechtreeunlock", "No TechTree Unlocks", help: "Players will no longer be able to progress on any tech trees.")]
+	[AuthLevel(2)]
+	public string NoTechTreeUnlock
+	{
+		get => NoTechTreeUnlockCache ? "1" : "-1";
+		set
+		{
+			if (string.IsNullOrEmpty(value))
+			{
+				NoTechTreeUnlockCache = default;
+				return;
+			}
+
+			NoTechTreeUnlockCache = value.ToBool(false);
+		}
+	}
+	public bool NoTechTreeUnlockCache;
+
 	#endregion
 
 	#region Vanilla
+
+	[CarbonAutoVar("nogivenotices", "No 'Give' Notices", help: "Will prohibit 'gave' messages to be printed to chat when admins give items.")]
+	[AuthLevel(2)]
+	public string NoGiveNotices
+	{
+		get => NoGiveNoticesCache ? "1" : "-1";
+		set
+		{
+			if (string.IsNullOrEmpty(value))
+			{
+				NoGiveNoticesCache = default;
+				return;
+			}
+
+			NoGiveNoticesCache = value.ToBool(false);
+		}
+	}
+	public bool NoGiveNoticesCache;
 
 	private string _customMapName = "-1";
 

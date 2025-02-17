@@ -1,14 +1,10 @@
-﻿/*
- *
- * Copyright (c) 2022-2024 Carbon Community
- * All rights reserved.
- *
- */
-
-using Facepunch;
+﻿using Facepunch;
 
 namespace Carbon.Components;
 
+/// <summary>
+/// Cache based suggestion system used to return confidence based data.
+/// </summary>
 public class Suggestions
 {
 	public static BufferBank Buffer = new();
@@ -20,7 +16,7 @@ public class Suggestions
 
 	public static IEnumerable<SuggestionResult> Lookup(string input, IEnumerable<string> values, int count = 3, int minimumConfidence = -1)
 	{
-		var buffer = Pool.GetList<SuggestionResult>();
+		var buffer = Pool.Get<List<SuggestionResult>>();
 		var minDistance = int.MaxValue;
 		var closestMatch = string.Empty;
 
@@ -49,7 +45,7 @@ public class Suggestions
 			yield return value;
 		}
 
-		Pool.FreeList(ref buffer);
+		Pool.FreeUnmanaged(ref buffer);
 	}
 
 	public class BufferBank : List<BufferInstance>

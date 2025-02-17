@@ -1,15 +1,10 @@
-﻿/*
- *
- * Copyright (c) 2022-2023 Carbon Community
- * All rights reserved.
- *
- */
-
+﻿using System.Text;
 using Carbon.Client;
+using Facepunch;
 
 namespace Carbon.Core;
 
-public partial class CorePlugin : CarbonPlugin
+public partial class CorePlugin
 {
 	[ConsoleCommand("client.editor.addon_live_update", "Carbon Editor requested RCon command for loading an addon.")]
 	[AuthLevel(2)]
@@ -25,7 +20,7 @@ public partial class CorePlugin : CarbonPlugin
 
 		Logger.Log($" C4C Editor: Received request to load addon from '{args.GetString(0)}'");
 
-		Community.Runtime.ClientConfig.RefreshNetworkedAddons();
+		Community.Runtime.ClientConfig.RefreshAddonCache();
 
 		ReloadCarbonClientAddons(true);
 	}

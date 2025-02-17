@@ -1,23 +1,16 @@
-﻿/*
- *
- * Copyright (c) 2022-2023 Carbon Community
- * All rights reserved.
- *
- */
-
-using Carbon.Base.Interfaces;
+﻿using API.Events;
 using Facepunch;
 
 namespace Carbon.Core;
 
 #pragma warning disable IDE0051
 
-public partial class CorePlugin : CarbonPlugin
+public partial class CorePlugin
 {
 	internal static bool _isPlayerTakingDamage = false;
 	internal static readonly string[] _emptyStringArray = new string[0];
 
-	internal static object IOnServerInitialized()
+	internal object IOnServerInitialized(bool inited)
 	{
 		if (!Community.IsServerInitialized)
 		{
@@ -26,13 +19,23 @@ public partial class CorePlugin : CarbonPlugin
 			Analytics.on_server_initialized();
 		}
 
+		if (!ConVar.Server.autoUploadMap)
+		{
+			Community.Runtime.MarkServerInitialized(true);
+		}
+
+		Community.Runtime.Events.Trigger(CarbonEvent.OnServerInitialized, EventArgs.Empty);
 		return null;
+	}
+	internal static object IOnServerInitialized()
+	{
+		return Community.Runtime.Core.IOnServerInitialized(true);
 	}
 	internal static object IOnServerShutdown()
 	{
 		Logger.Log($"Saving plugin configuration and data..");
 
-		var temp = Pool.GetList<BaseHookable>();
+		var temp = Pool.Get<List<BaseHookable>>();
 		temp.AddRange(Community.Runtime.ModuleProcessor.Modules);
 
 		foreach (var module in temp)
@@ -50,7 +53,7 @@ public partial class CorePlugin : CarbonPlugin
 			}
 		}
 
-		Pool.FreeList(ref temp);
+		Pool.FreeUnmanaged(ref temp);
 
 		// OnServerShutdown
 		HookCaller.CallStaticHook(2414711472);
@@ -60,7 +63,14 @@ public partial class CorePlugin : CarbonPlugin
 
 		Logger.Log($"Shutting down Carbon..");
 		Interface.Oxide.OnShutdown();
-		Community.Runtime.ScriptProcessor.Clear();
+
+		var plugins = Pool.Get<List<RustPlugin>>();
+		ModLoader.Packages.GetAllHookables(plugins);
+		foreach (var plugin in plugins)
+		{
+			ModLoader.UninitializePlugin(plugin, unloadDependantPlugins: false);
+		}
+		Pool.FreeUnmanaged(ref plugins);
 
 		return null;
 	}

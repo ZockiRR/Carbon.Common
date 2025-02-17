@@ -1,12 +1,4 @@
-﻿using Facepunch;
-using Logger = Carbon.Logger;
-
-/*
- *
- * Copyright (c) 2022-2023 Carbon Community
- * All rights reserved.
- *
- */
+﻿using Logger = Carbon.Logger;
 
 namespace Oxide.Plugins;
 
@@ -45,7 +37,10 @@ public class Timers : Library
 
 	public Timer In(float time, Action action)
 	{
-		if (!IsValid()) return null;
+		if (!IsValid())
+		{
+			return null;
+		}
 
 		var timer = new Timer(Persistence, action, Plugin);
 		var activity = new Action(() =>
@@ -78,7 +73,10 @@ public class Timers : Library
 	}
 	public Timer Every(float time, Action action)
 	{
-		if (!IsValid()) return null;
+		if (!IsValid())
+		{
+			return null;
+		}
 
 		var timer = new Timer(Persistence, action, Plugin);
 		var activity = new Action(() =>
@@ -148,7 +146,7 @@ public class Timers : Library
 	}
 }
 
-public class Timer : Library
+public class Timer : IDisposable
 {
 	public Plugin Plugin { get; set; }
 
@@ -250,10 +248,8 @@ public class Timer : Library
 	{
 		Destroy();
 	}
-	public override void Dispose()
+	public void Dispose()
 	{
 		Destroy();
-
-		base.Dispose();
 	}
 }

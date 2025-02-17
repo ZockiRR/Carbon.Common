@@ -1,17 +1,9 @@
 ﻿using System.Text;
-using API.Assembly;
 using Carbon.Base.Interfaces;
-
-/*
- *
- * Copyright (c) 2022-2023 Carbon Community
- * All rights reserved.
- *
- */
 
 namespace Carbon.Core;
 
-public partial class CorePlugin : CarbonPlugin
+public partial class CorePlugin
 {
 	[ConsoleCommand("setmodule", "Enables or disables Carbon modules. Visit root/carbon/modules and use the config file names as IDs.")]
 	[AuthLevel(2)]
@@ -114,15 +106,11 @@ public partial class CorePlugin : CarbonPlugin
 			return;
 		}
 
-		if (module.IsEnabled()) module.SetEnabled(false);
-
 		try
 		{
 			module.Load();
 
-			if (module.IsEnabled()) module.OnEnableStatus();
-
-			arg.ReplyWith($"Reloaded '{module.Name}' module config.");
+			arg.ReplyWith($"Reloaded '{module.Name}' module config & data.");
 		}
 		catch (Exception ex)
 		{
@@ -137,7 +125,7 @@ public partial class CorePlugin : CarbonPlugin
 		var mode = arg.GetString(0);
 		var flip = arg.GetString(0).Equals("-asc") || arg.GetString(1).Equals("-asc");
 
-		using var print = new StringTable( "Name", "Enabled", "Version", "Time", "Fires", "Memory", "Lag", "Uptime");
+		using var print = new StringTable( "name", "enabled", "version", "time", "fires", "memory", "lag", "uptime");
 
 		IEnumerable<BaseHookable> array = mode switch
 		{
@@ -235,7 +223,7 @@ public partial class CorePlugin : CarbonPlugin
 			return;
 		}
 
-		using (var table = new StringTable(string.Empty, "Id", "Hook", "Time", "Fires", "Memory", "Lag", "Subscribed", "Async & Overrides"))
+		using (var table = new StringTable(string.Empty, "id", "hook", "time", "fires", "memory", "lag", "exceptions", "subscribed", "async / hooks"))
 		{
 			IEnumerable<List<CachedHook>> array = mode switch
 			{
@@ -243,6 +231,7 @@ public partial class CorePlugin : CarbonPlugin
 				"-m" => (flip ? module.HookPool.OrderBy(x => x.Value.Hooks.Sum(x => x.MemoryUsage)) : module.HookPool.OrderByDescending(x => x.Value.Hooks.Sum(x => x.MemoryUsage))).Select(x => x.Value.Hooks),
 				"-f" => (flip ? module.HookPool.OrderBy(x => x.Value.Hooks.Sum(x => x.TimesFired)) : module.HookPool.OrderByDescending(x => x.Value.Hooks.Sum(x => x.TimesFired))).Select(x => x.Value.Hooks),
 				"-ls" => (flip ? module.HookPool.OrderBy(x => x.Value.Hooks.Sum(x => x.LagSpikes)) : module.HookPool.OrderByDescending(x => x.Value.Hooks.Sum(x => x.LagSpikes))).Select(x => x.Value.Hooks),
+				"-ex" => (flip ? module.HookPool.OrderBy(x => x.Value.Hooks.Sum(x => x.Exceptions)) : module.HookPool.OrderByDescending(x => x.Value.Hooks.Sum(x => x.Exceptions))).Select(x => x.Value.Hooks),
 				_ => module.HookPool.Select(x => x.Value.Hooks)
 			};
 
@@ -269,6 +258,7 @@ public partial class CorePlugin : CarbonPlugin
 				var hookAsyncCount = hook.Count(x => x.IsAsync);
 				var hookTimesFired = hook.Sum(x => x.TimesFired);
 				var hookLagSpikes = hook.Sum(x => x.LagSpikes);
+				var hookException = hook.Sum(x => x.Exceptions);
 
 				table.AddRow(string.Empty,
 					hookId,
@@ -277,6 +267,7 @@ public partial class CorePlugin : CarbonPlugin
 					hookTimesFired == 0 ? string.Empty : $"{hookTimesFired:n0}",
 					hookMemoryUsage == 0 ? string.Empty : $"{ByteEx.Format(hookMemoryUsage, shortName: true).ToLower()}",
 					hookLagSpikes == 0 ? string.Empty : $"{hookLagSpikes:n0}",
+					hookException == 0 ? string.Empty : $"{hookException:n0}",
 					!module.IgnoredHooks.Contains(hookId) ? "*" : string.Empty,
 					$"{hookAsyncCount:n0} / {hookCount:n0}");
 			}
