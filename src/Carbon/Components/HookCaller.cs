@@ -1,22 +1,12 @@
-﻿using System.Collections.Concurrent;
-using System.Diagnostics;
+﻿using System;
 using System.Text;
 using Carbon.Base.Interfaces;
-using ConVar;
-using Facepunch;
 using HarmonyLib;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using static Carbon.HookCallerCommon;
 using Pool = Facepunch.Pool;
-
-/*
- *
- * Copyright (c) 2022-2024 Carbon Community
- * All rights reserved.
- *
- */
 
 namespace Carbon;
 
@@ -42,9 +32,9 @@ public class HookCallerCommon
 			}
 		}
 
-		public object[] Take()
+		public object[] Rent()
 		{
-			return _pool.Count != 0 ? _pool.Dequeue() : new object[_length];
+			return _pool.Count > 0 ? _pool.Dequeue() : new object[_length];
 		}
 		public void Return(object[] array)
 		{
@@ -86,38 +76,20 @@ public static class HookCaller
 
 	public static IEnumerable<BaseHookable.CachedHook> GetAllFor(uint hook)
 	{
-		foreach (var package in ModLoader.LoadedPackages)
+		foreach (var cacheHook in from package in ModLoader.Packages
+		         from plugin in package.Plugins
+		         from cache in plugin.HookPool where cache.Key == hook
+		         from cacheHook in cache.Value.Hooks select cacheHook)
 		{
-			foreach (var plugin in package.Plugins)
-			{
-				foreach (var cache in plugin.HookPool)
-				{
-					if (cache.Key != hook)
-					{
-						continue;
-					}
-
-					foreach (var cacheHook in cache.Value)
-					{
-						yield return cacheHook;
-					}
-				}
-			}
+			yield return cacheHook;
 		}
 
-		foreach (var module in Community.Runtime.ModuleProcessor.Modules)
+		foreach (var cacheHook in
+		         from module in Community.Runtime.ModuleProcessor.Modules
+		         from cache in module.HookPool where cache.Key == hook
+		         from cacheHook in cache.Value.Hooks select cacheHook)
 		{
-			foreach (var cache in module.HookPool)
-			{
-				if (cache.Key != hook)
-				{
-					continue;
-				}
-
-				foreach (var cacheHook in cache.Value)
-				{
-					yield return cacheHook;
-				}			}
+			yield return cacheHook;
 		}
 	}
 
@@ -165,13 +137,27 @@ public static class HookCaller
 
 		return finalValue;
 	}
+	public static int GetTotalExceptions(uint hook)
+	{
+		int finalValue = default;
+
+		foreach (var cacheInstance in GetAllFor(hook))
+		{
+			finalValue += cacheInstance.Exceptions;
+		}
+
+		return finalValue;
+	}
 
 	private static object CallStaticHook(uint hookId, BindingFlags flag = BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Public, object[] args = null)
 	{
-		if (Community.Runtime == null || Community.Runtime.ModuleProcessor == null) return null;
+		if (Community.Runtime == null || Community.Runtime.ModuleProcessor == null)
+		{
+			return null;
+		}
 
 		var result = (object)null;
-		var conflicts = Pool.GetList<Conflict>();
+		var conflicts = Pool.Get<List<Conflict>>();
 
 		for (int i = 0; i < Community.Runtime.ModuleProcessor.Modules.Count; i++)
 		{
@@ -179,7 +165,7 @@ public static class HookCaller
 
 			try
 			{
-				if (hookable is IModule modules && !modules.GetEnabled()) continue;
+				if (hookable is IModule modules && !modules.IsEnabled()) continue;
 
 				var methodResult = Caller.CallHook(hookable, hookId, flags: flag, args: args);
 
@@ -196,9 +182,9 @@ public static class HookCaller
 			}
 		}
 
-		for (int i = 0; i < ModLoader.LoadedPackages.Count; i++)
+		for (int i = 0; i < ModLoader.Packages.Count; i++)
 		{
-			var package = ModLoader.LoadedPackages[i];
+			var package = ModLoader.Packages[i];
 
 			for(int o = 0; o < package.Plugins.Count; o++)
 			{
@@ -208,7 +194,10 @@ public static class HookCaller
 				{
 					var methodResult = Caller.CallHook(plugin, hookId, flags: flag, args: args);
 
-					if (methodResult == null) continue;
+					if (methodResult == null)
+					{
+						continue;
+					}
 
 					result = methodResult;
 					ResultOverride(conflicts, plugin, hookId, result);
@@ -224,7 +213,7 @@ public static class HookCaller
 
 		ConflictCheck(conflicts, ref result, hookId);
 
-		Pool.FreeList(ref conflicts);
+		Pool.FreeUnmanaged(ref conflicts);
 
 		return result;
 	}
@@ -255,17 +244,31 @@ public static class HookCaller
 	}
 	public static void ConflictCheck(List<Conflict> conflicts, ref object result, uint hookId)
 	{
-		if (conflicts == null || conflicts.Count <= 1) return;
+		if (conflicts == null || conflicts.Count <= 1)
+		{
+			return;
+		}
 
 		var localResult = result = conflicts[0].Result;
-		var differentResults =  conflicts.Any(conflict => localResult != null && conflict.Result.ToString() != localResult.ToString());
+		var differentResults = false;
 
-		if (differentResults)
+		foreach (var conflict in conflicts)
 		{
-			var readableHook = HookStringPool.GetOrAdd(hookId);
-			Logger.Warn($" Hook conflict while calling '{readableHook}[{hookId}]': {conflicts.Select(x => $"{x.Hookable.Name} {x.Hookable.Version} [{x.Result}]").ToString(", ", " and ")}");
-			result = conflicts[^1].Result;
+			if (localResult == null || (conflict.Result != null && conflict.Result.Equals(localResult)))
+			{
+				continue;
+			}
+			differentResults = true;
+			break;
 		}
+
+		if (!differentResults)
+		{
+			return;
+		}
+
+		Logger.Warn($" Hook conflict while calling '{ HookStringPool.GetOrAdd(hookId)}[{hookId}]': {conflicts.Select(x => $"{x.Hookable.Name} {x.Hookable.Version} [{x.Result}]").ToString(", ", " and ")}");
+		result = conflicts[^1].Result;
 	}
 
 	#region Hook Overrides
@@ -919,7 +922,15 @@ public static class HookCaller
 		Caller.ReturnBuffer(buffer);
 		return result == null ? default : (T)TypeEx.ConvertType<T>(result);
 	}
-
+	public static object CallHook(BaseHookable plugin, uint hookId, object[] args)
+	{
+		return Caller.CallHook(plugin, hookId, BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Public, args);
+	}
+	public static T CallHook<T>(BaseHookable plugin, uint hookId, object[] args)
+	{
+		var result = Caller.CallHook(plugin, hookId, BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Public, args);
+		return result == null ? default : (T)TypeEx.ConvertType<T>(result);
+	}
 	#endregion
 
 	#region Static Hook Overrides
@@ -1370,15 +1381,15 @@ public static class HookCaller
 
 	#region Generator
 
-	internal static char[] _underscoreChar = new [] { '_' };
-	internal static char[] _dotChar = new [] { '.' };
-	internal static string[] _operatorsStrings = new [] { "&&", "||" };
-	internal static string _ifDirective = "#if";
-	internal static string _elifDirective = "#elif";
+	private static char[] _underscoreChar = new [] { '_' };
+	private static char[] _dotChar = new [] { '.' };
+	private static string[] _operatorsStrings = new [] { "&&", "||" };
+	private static string _ifDirective = "#if";
+	private static string _elifDirective = "#elif";
 
 	public static void GenerateInternalCallHook(CompilationUnitSyntax input, out CompilationUnitSyntax output, out MethodDeclarationSyntax generatedMethod, out bool isPartial, bool baseCall = false, string baseName = "plugin", List<ClassDeclarationSyntax> classList = null)
 	{
-		var methodContents = $"\n\tvar result = {(baseCall ? "base.InternalCallHook(hook, args)" : "(object)null")};\n\tvar length = args?.Length;\ntry {{ switch(hook) {{ ";
+		var methodContents = $"\n\tvar length = args?.Length;\ntry {{ switch(hook) {{ ";
 
 		var @namespace = (BaseNamespaceDeclarationSyntax)null;
 		var namespaceIndex = 0;
@@ -1387,7 +1398,7 @@ public static class HookCaller
 
 		if (classList == null)
 		{
-			classList = Pool.GetList<ClassDeclarationSyntax>();
+			classList = Pool.Get<List<ClassDeclarationSyntax>>();
 			isTemp = true;
 			FindPluginInfo(input, out @namespace, out _, out _, classList);
 		}
@@ -1396,6 +1407,19 @@ public static class HookCaller
 			FindPluginInfo(input, out @namespace, out _, out _, null);
 
 			namespaceIndex = classIndex = 0;
+		}
+
+		if(classList.Count == 0)
+		{
+			if (isTemp)
+			{
+				Pool.FreeUnmanaged(ref classList);
+			}
+
+			output = null;
+			generatedMethod = null;
+			isPartial = default;
+			return;
 		}
 
 		var @class = classList[0];
@@ -1412,7 +1436,7 @@ public static class HookCaller
 
 		if (isTemp)
 		{
-			Pool.FreeList(ref classList);
+			Pool.FreeUnmanaged(ref classList);
 		}
 
 		var hookableMethods = new Dictionary<uint, List<MethodDeclarationSyntax>>();
@@ -1439,7 +1463,7 @@ public static class HookCaller
 
 					if (methodName.Contains("."))
 					{
-						using var temp = TemporaryArray<string>.New(methodName.Split('.'));
+						using var temp = TempArray<string>.New(methodName.Split('.'));
 						methodName = temp.Get(temp.Length - 1);
 					}
 				}
@@ -1500,11 +1524,13 @@ public static class HookCaller
 					{
 						return $"out var arg{parameterIndex}_{i}";
 					}
-					else if (x.Default != null || x.Type is NullableTypeSyntax)
+
+					if (x.Default != null || x.Type is NullableTypeSyntax)
 					{
 						return $"length > {parameterIndex} && args[{parameterIndex}] is {type} arg{parameterIndex}_{i} ? arg{parameterIndex}_{i} : ({type})default";
 					}
-					else if (x.Modifiers.Any(x => x.IsKind(SyntaxKind.RefKeyword)))
+
+					if (x.Modifiers.Any(x => x.IsKind(SyntaxKind.RefKeyword)))
 					{
 						return $"ref arg{parameterIndex}_{i}";
 					}
@@ -1538,6 +1564,7 @@ public static class HookCaller
 					if (parameter.Default == null && !parameter.Modifiers.Any(y => y.IsKind(SyntaxKind.OutKeyword)) && parameter.Type is not NullableTypeSyntax && !(parameter.Type is ITypeSymbol symbol && symbol.IsValueType))
 					{
 						var type = parameter.Type.ToString().Replace("global::", string.Empty);
+
 						varText += $"var narg{parameterIndex}_{i} = length > {parameterIndex} ? args[{parameterIndex}] is {type} or null : true;\nvar arg{parameterIndex}_{i} = length > {parameterIndex} && narg{parameterIndex}_{i} ? ({type})(args[{parameterIndex}] ?? ({type})default) : ({type})default;\n";
 						parameterText += !IsUnmanagedType(parameter.Type) ? $"narg{parameterIndex}_{i} && " : $"(narg{parameterIndex}_{i} || args[{parameterIndex}] == null) && ";
 					}
@@ -1549,8 +1576,8 @@ public static class HookCaller
 				}
 
 				methodContents += $"{(string.IsNullOrEmpty(conditional) ? string.Empty : $"\n#if {conditional}")}\t\t\t\n\t\t\t\t" +
-					$"{varText}{(string.IsNullOrEmpty(parameterText) ? string.Empty : $"if({parameterText}) {{")} {(method.ReturnType.ToString() != "void" ? $"var result{overrideCount} = " : string.Empty)}" +
-					$"{methodName}({string.Join(", ", parameters)}); {refSets} {(method.ReturnType.ToString() != "void" ? $"if(result == null) {{ result = result{overrideCount}; }}" : string.Empty)} " +
+					$"{varText}{(string.IsNullOrEmpty(parameterText) ? string.Empty : $"if({parameterText}) {{")} {(method.ReturnType.ToString() != "void" ? $"return " : string.Empty)}" +
+					$"{methodName}({string.Join(", ", parameters)}); {refSets} " +
 					$"{(string.IsNullOrEmpty(parameterText) ? string.Empty : $"}}")}{(string.IsNullOrEmpty(conditional) ? string.Empty : $"\n#endif")}\n";
 
 				Array.Clear(parameters, 0, parameters.Length);
@@ -1564,7 +1591,9 @@ public static class HookCaller
 			methodContents += "\t\t\t\tbreak;\n\t\t\t}";
 		}
 
-		methodContents += "}\n}\ncatch (System.Exception ex)\n{\nCarbon.Logger.Error($\"Failed to call internal hook '{Carbon.Pooling.HookStringPool.GetOrAdd(hook)}' on " + baseName + " '{" + (baseName == "plugin" ? "base.Name" : "this.Name") + "} v{ " + (baseName == "plugin" ? "base.Version" : "this.Version") + "}' [{hook}]\", ex);\n}\nreturn result;";
+		methodContents += "}\n}\ncatch (System.Exception ex)\n{\nCarbon.Logger.Error($\"Failed to call internal hook '{Carbon.Pooling.HookStringPool.GetOrAdd(hook)}' on " + baseName + " '{" + (baseName == "plugin" ? "base.Name" : "this.Name") + "} v{ " + (baseName == "plugin" ? "base.Version" : "this.Version") + "}' [{hook}]\", ex);\n" +
+		                  "\nOnException(hook);\n}\n" +
+			$"return {(baseCall ? "base.InternalCallHook(hook, args)" : "(object)null")};";
 
 		generatedMethod = SyntaxFactory.MethodDeclaration(
 			SyntaxFactory.PredefinedType(SyntaxFactory.Token(SyntaxKind.ObjectKeyword).WithTrailingTrivia(SyntaxFactory.Space)),
@@ -1604,16 +1633,22 @@ public static class HookCaller
 	{
 		GenerateInternalCallHook(input, out _, out var method, out var isPartial, classList: classes);
 
+		if(method == null)
+		{
+			output = null;
+			return;
+		}
+
 		var @namespace = (BaseNamespaceDeclarationSyntax)null;
 		var @class = (ClassDeclarationSyntax)null;
 
 		if (classes == null)
 		{
-			classes = Facepunch.Pool.GetList<ClassDeclarationSyntax>();
+			classes = Facepunch.Pool.Get<List<ClassDeclarationSyntax>>();
 			FindPluginInfo(input, out @namespace, out _, out _, classes);
 
 			@class = classes[0];
-			Facepunch.Pool.FreeList(ref classes);
+			Facepunch.Pool.FreeUnmanaged(ref classes);
 		}
 		else
 		{
@@ -1636,7 +1671,7 @@ partial class {@class.Identifier.ValueText}
 		string path;
 
 #if DEBUG
-		if (isPartial && Debugger.IsAttached)
+		if (isPartial)
 		{
 			path = Path.Combine(Defines.GetScriptDebugFolder(), $"{Path.GetFileNameWithoutExtension(fileName)}.Internal.cs");
 			output = CSharpSyntaxTree.ParseText(source, options, path, Encoding.UTF8).GetCompilationUnitRoot().NormalizeWhitespace();
@@ -1661,13 +1696,13 @@ partial class {@class.Identifier.ValueText}
 		{
 			var processedDirective = directive.Replace(_ifDirective, string.Empty).Replace(_elifDirective, string.Empty).Trim();
 
-			using var subdirectives = TemporaryArray<string>.New(processedDirective.Split(_operatorsStrings, StringSplitOptions.RemoveEmptyEntries));
+			using var subdirectives = TempArray<string>.New(processedDirective.Split(_operatorsStrings, StringSplitOptions.RemoveEmptyEntries));
 
-			foreach (var subdirective in subdirectives.Array)
+			foreach (var subdirective in subdirectives.array)
 			{
 				var processedSubdirective = subdirective.Trim();
 
-				using var split = TemporaryArray<string>.New(processedSubdirective.Split(_underscoreChar));
+				using var split = TempArray<string>.New(processedSubdirective.Split(_underscoreChar));
 
 				if (split.Length < 3)
 				{
@@ -1700,7 +1735,7 @@ partial class {@class.Identifier.ValueText}
 
 					case "CARBON":
 					{
-						using var protocol = TemporaryArray<string>.New(Community.Runtime.Analytics.Protocol.Split(_dotChar));
+						using var protocol = TempArray<string>.New(Community.Runtime.Analytics.Protocol.Split(_dotChar));
 
 						var current = new VersionNumber(protocol.Get(0).ToInt(), protocol.Get(1).ToInt(), protocol.Get(2).ToInt());
 
@@ -1756,29 +1791,39 @@ partial class {@class.Identifier.ValueText}
 		namespaceIndex = 0;
 		classIndex = 0;
 
-		foreach (var ns in input.Members.OfType<BaseNamespaceDeclarationSyntax>())
+		for(int n = 0; n < input.Members.Count; n++)
 		{
-			var nsClasses = ns.Members.OfType<ClassDeclarationSyntax>();
+			var memberA = input.Members[n];
 
-			for(int i = 0; i < nsClasses.Count(); i++)
+			if (memberA is not BaseNamespaceDeclarationSyntax ns)
 			{
-				var cls = nsClasses.ElementAt(i);
+				continue;
+			}
+
+			for(int c = 0; c < ns.Members.Count; c++)
+			{
+				var memberB = ns.Members[c];
+
+				if (memberB is not ClassDeclarationSyntax cls)
+				{
+					continue;
+				}
 
 				if (cls.AttributeLists.Count > 0)
 				{
-					foreach(var attribute in cls.AttributeLists)
+					foreach (var attribute in cls.AttributeLists)
 					{
-						if (attribute.Attributes[0].Name is IdentifierNameSyntax nameSyntax && nameSyntax.Identifier.Text == "Info")
+						if (attribute.Attributes[0].Name is IdentifierNameSyntax nameSyntax && nameSyntax.Identifier.Text.Equals("Info"))
 						{
-							@namespaceIndex = input.Members.IndexOf(ns);
+							@namespaceIndex = n;
 							@namespace = ns;
-							classIndex = i;
+							classIndex = c;
 							@class = cls;
 							classes?.Insert(0, @class);
 						}
 					}
 				}
-				else if(cls.Modifiers.Any(x => x.IsKind(SyntaxKind.PartialKeyword)))
+				else if (cls.Modifiers.Any(x => x.IsKind(SyntaxKind.PartialKeyword)))
 				{
 					classes?.Add(cls);
 				}

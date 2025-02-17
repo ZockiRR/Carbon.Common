@@ -1,11 +1,4 @@
-﻿/*
- *
- * Copyright (c) 2022-2023 Carbon Community
- * All rights reserved.
- *
- */
-
-using Facepunch;
+﻿using Facepunch;
 using Logger = Carbon.Logger;
 
 namespace Oxide.Core.Libraries;
@@ -40,11 +33,12 @@ public class Permission : Library
 		CleanUp();
 	}
 
-	internal readonly static char[] Star = new char[] { '*' };
-	internal readonly static string[] EmptyStringArray = new string[0];
+	internal readonly static char[] Star = ['*'];
+	internal readonly static string StarStr = "*";
+	internal readonly static string[] EmptyStringArray = [];
 
-	public Dictionary<string, UserData> userdata = new();
-	public Dictionary<string, GroupData> groupdata = new();
+	public Dictionary<string, UserData> userdata = [];
+	public Dictionary<string, GroupData> groupdata = [];
 	public readonly Dictionary<BaseHookable, HashSet<string>> permset;
 
 	private Func<string, bool> validate;
@@ -153,15 +147,14 @@ public class Permission : Library
 
 		var playerDefaultGroup = Community.Runtime.Config.Permissions.PlayerDefaultGroup;
 		var adminDefaultGroup = Community.Runtime.Config.Permissions.AdminDefaultGroup;
+		var moderatorDefaultGroup = Community.Runtime.Config.Permissions.ModeratorDefaultGroup;
 
-		if (!GroupExists(playerDefaultGroup))
-		{
-			CreateGroup(playerDefaultGroup, playerDefaultGroup?.ToCamelCase(), 0);
-		}
-		if (!GroupExists(adminDefaultGroup))
-		{
-			CreateGroup(adminDefaultGroup, adminDefaultGroup?.ToCamelCase(), 1);
-		}
+		if (!string.IsNullOrEmpty(playerDefaultGroup) && !GroupExists(playerDefaultGroup))
+			CreateGroup(playerDefaultGroup, playerDefaultGroup.ToCamelCase(), 0);
+		if (!string.IsNullOrEmpty(adminDefaultGroup) && !GroupExists(adminDefaultGroup))
+			CreateGroup(adminDefaultGroup, adminDefaultGroup.ToCamelCase(), 1);
+		if (!string.IsNullOrEmpty(moderatorDefaultGroup) && !GroupExists(moderatorDefaultGroup))
+			CreateGroup(moderatorDefaultGroup, moderatorDefaultGroup.ToCamelCase(), 1);
 
 		IsLoaded = true;
 
@@ -245,7 +238,10 @@ public class Permission : Library
 
 	public virtual void RegisterPermission(string name, BaseHookable owner)
 	{
-		if (string.IsNullOrEmpty(name)) return;
+		if (string.IsNullOrEmpty(name))
+		{
+			return;
+		}
 
 		if (!name.IsLower())
 		{
@@ -270,11 +266,14 @@ public class Permission : Library
 		}
 		hashSet.Add(name);
 		// OnPermissionRegistered
-		HookCaller.CallStaticHook(3007604742, name, owner);
+		HookCaller.CallStaticHook(4257240972, name, owner);
 	}
 	public virtual void UnregisterPermissions(BaseHookable owner)
 	{
-		if (owner == null) return;
+		if (owner == null)
+		{
+			return;
+		}
 
 		if (permset.TryGetValue(owner, out var hashSet))
 		{
@@ -282,7 +281,7 @@ public class Permission : Library
 			permset.Remove(owner);
 
 			// OnPermissionsUnregistered
-			HookCaller.CallStaticHook(1374013157, owner);
+			HookCaller.CallStaticHook(2952085131, owner);
 		}
 	}
 	public virtual bool PermissionExists(string name, BaseHookable owner = null)
@@ -301,12 +300,12 @@ public class Permission : Library
 		{
 			if (permset.Count > 0)
 			{
-				if (name.Equals("*"))
+				if (name.Equals(StarStr))
 				{
 					return true;
 				}
 
-				if (name.EndsWith("*"))
+				if (name.EndsWith(StarStr))
 				{
 					name = name.TrimEnd(Star);
 					return permset.Values.SelectMany(v => v).Any(p => p.StartsWith(name));
@@ -320,12 +319,12 @@ public class Permission : Library
 
 		if (hashSet.Count > 0)
 		{
-			if (name.Equals("*"))
+			if (name.Equals(StarStr))
 			{
 				return true;
 			}
 
-			if (name.EndsWith("*"))
+			if (name.EndsWith(StarStr))
 			{
 				name = name.TrimEnd(Star);
 				return hashSet.Any(p => p.StartsWith(name));
@@ -352,7 +351,10 @@ public class Permission : Library
 	{
 		if (!userdata.TryGetValue(id, out var result))
 		{
-			if (!addIfNotExisting) return _blankUser;
+			if (!addIfNotExisting)
+			{
+				return _blankUser;
+			}
 
 			userdata.Add(id, result = new UserData());
 		}
@@ -385,22 +387,32 @@ public class Permission : Library
 
 	public virtual void RefreshUser(BasePlayer player)
 	{
-		if (player == null) return;
+		if (player == null)
+		{
+			return;
+		}
 
 		var user = GetUserData(player.UserIDString, addIfNotExisting: true);
 		user.Player = player.AsIPlayer();
 		user.LastSeenNickname = player.displayName;
 
 		if (player.net != null && player.net.connection != null && player.net.connection.info != null)
+		{
 			user.Language = player.net.connection.info.GetString("global.language", Community.Runtime.Config.Language);
-		else user.Language = Community.Runtime.Config.Language;
+		}
+		else
+		{
+			user.Language = Community.Runtime.Config.Language;
+		}
 
 		if (!string.IsNullOrEmpty(Community.Runtime.Config.Permissions.PlayerDefaultGroup))
+		{
 			AddUserGroup(player.UserIDString, Community.Runtime.Config.Permissions.PlayerDefaultGroup);
+		}
 
 		if (!string.IsNullOrEmpty(Community.Runtime.Config.Permissions.AdminDefaultGroup))
 		{
-			if (player.IsAdmin || (player.net.connection != null && player.net.connection.authLevel >= 2))
+			if (player.net is { connection.authLevel: 2 })
 			{
 				AddUserGroup(player.UserIDString, Community.Runtime.Config.Permissions.AdminDefaultGroup);
 			}
@@ -410,10 +422,28 @@ public class Permission : Library
 			}
 		}
 
+		if (!string.IsNullOrEmpty(Community.Runtime.Config.Permissions.ModeratorDefaultGroup))
+		{
+			if (player.net is { connection.authLevel: 1 })
+			{
+				AddUserGroup(player.UserIDString, Community.Runtime.Config.Permissions.ModeratorDefaultGroup);
+			}
+			else if (UserHasGroup(player.UserIDString, Community.Runtime.Config.Permissions.ModeratorDefaultGroup))
+			{
+				RemoveUserGroup(player.UserIDString, Community.Runtime.Config.Permissions.ModeratorDefaultGroup);
+			}
+		}
+
 		var iplayerValue = (RustPlayer)null;
 
-		if (iPlayerField.GetValue(player) == null) iPlayerField.SetValue(player, iplayerValue = new RustPlayer(player));
-		else iplayerValue = (RustPlayer)iPlayerField.GetValue(player);
+		if (iPlayerField.GetValue(player) == null)
+		{
+			iPlayerField.SetValue(player, iplayerValue = new RustPlayer(player));
+		}
+		else
+		{
+			iplayerValue = (RustPlayer)iPlayerField.GetValue(player);
+		}
 
 		iplayerValue.Object = player;
 	}
@@ -426,7 +456,7 @@ public class Permission : Library
 			userData.LastSeenNickname = nickname.Sanitize();
 
 			// OnUserNameUpdated
-			HookCaller.CallStaticHook(945289215, id, lastSeenNickname, userData.LastSeenNickname);
+			HookCaller.CallStaticHook(4255507790, id, lastSeenNickname, userData.LastSeenNickname);
 		}
 	}
 
@@ -476,8 +506,15 @@ public class Permission : Library
 	}
 	public virtual bool UserHasPermission(string id, string perm)
 	{
-		if (string.IsNullOrEmpty(perm) || string.IsNullOrEmpty(id)) return false;
-		if (id.Equals("server_console")) return true;
+		if (string.IsNullOrEmpty(perm) || string.IsNullOrEmpty(id) || perm.Equals(StarStr))
+		{
+			return false;
+		}
+
+		if (id.Equals("server_console"))
+		{
+			return true;
+		}
 
 		var userData = GetUserData(id);
 
@@ -545,7 +582,7 @@ public class Permission : Library
 
 		var result = hashSet.ToArray();
 		hashSet.Clear();
-		Pool.Free(ref hashSet);
+		Pool.FreeUnmanaged(ref hashSet);
 		return result;
 	}
 	public virtual string[] GetPermissionGroups(string perm)
@@ -567,41 +604,50 @@ public class Permission : Library
 		}
 		var result = hashSet.ToArray();
 		hashSet.Clear();
-		Pool.Free(ref hashSet);
+		Pool.FreeUnmanaged(ref hashSet);
 		return result;
 	}
 
 	public virtual void AddUserGroup(string id, string name)
 	{
-		if (!GroupExists(name)) return;
-		if (!GetUserData(id).Groups.Add(name.ToLower())) return;
+		if (!GroupExists(name) || !GetUserData(id).Groups.Add(name.ToLower()))
+		{
+			return;
+		}
 
-		// OnUserGroupRemoved
-		HookCaller.CallStaticHook(3469176166, id, name);
+		// OnUserGroupAdded
+		HookCaller.CallStaticHook(3116013984, id, name);
 	}
 	public virtual void RemoveUserGroup(string id, string name)
 	{
 		if (!GroupExists(name)) return;
 
 		var userData = GetUserData(id);
-		if (name.Equals("*"))
+
+		if (name.Equals(StarStr))
 		{
-			if (userData.Groups.Count <= 0) return;
+			if (userData.Groups.Count <= 0)
+			{
+				return;
+			}
 
 			foreach (var group in userData.Groups)
 			{
 				// OnUserGroupRemoved
-				HookCaller.CallStaticHook(2616322405, id, group);
+				HookCaller.CallStaticHook(1018697706, id, group);
 			}
 
 			userData.Groups.Clear();
 		}
 		else
 		{
-			if (!userData.Groups.Remove(name.ToLower())) return;
+			if (!userData.Groups.Remove(name.ToLower()))
+			{
+				return;
+			}
 
 			// OnUserGroupRemoved
-			HookCaller.CallStaticHook(2616322405, id, name);
+			HookCaller.CallStaticHook(1018697706, id, name);
 		}
 	}
 	public virtual bool UserHasGroup(string id, string name)
@@ -628,7 +674,7 @@ public class Permission : Library
 			return false;
 		}
 
-		if (groupName.Equals("*"))
+		if (groupName.Equals(StarStr))
 		{
 			return true;
 		}
@@ -646,11 +692,14 @@ public class Permission : Library
 
 	public virtual string[] GetGroups()
 	{
-		return groupdata.Keys.ToArray();
+		return [.. groupdata.Keys];
 	}
 	public virtual string[] GetUsersInGroup(string group)
 	{
-		if (!GroupExists(group)) return EmptyStringArray;
+		if (!GroupExists(group))
+		{
+			return EmptyStringArray;
+		}
 
 		if (!group.IsLower())
 		{
@@ -664,7 +713,10 @@ public class Permission : Library
 
 	public virtual string GetGroupTitle(string group)
 	{
-		if (!GroupExists(group)) return string.Empty;
+		if (!GroupExists(group))
+		{
+			return string.Empty;
+		}
 
 		if (!group.IsLower())
 		{
@@ -680,21 +732,30 @@ public class Permission : Library
 	}
 	public virtual int GetGroupRank(string group)
 	{
-		if (!GroupExists(group)) return 0;
+		if (!GroupExists(group))
+		{
+			return default;
+		}
 
 		if (!group.IsLower())
 		{
 			group = group.ToLower();
 		}
 
-		if (!groupdata.TryGetValue(group, out var groupData)) return 0;
+		if (!groupdata.TryGetValue(group, out var groupData))
+		{
+			return default;
+		}
 
 		return groupData.Rank;
 	}
 
 	public virtual bool GrantUserPermission(string id, string perm, BaseHookable owner)
 	{
-		if (!PermissionExists(perm, owner)) return false;
+		if (!PermissionExists(perm, owner))
+		{
+			return false;
+		}
 
 		var data = GetUserData(id);
 
@@ -703,7 +764,7 @@ public class Permission : Library
 			perm = perm.ToLower();
 		}
 
-		if (perm.EndsWith("*"))
+		if (perm.EndsWith(StarStr))
 		{
 			HashSet<string> source;
 			if (owner == null)
@@ -714,44 +775,57 @@ public class Permission : Library
 			{
 				return false;
 			}
-			if (perm.Equals("*"))
+
+			if (perm.Equals(StarStr))
 			{
-				source.Aggregate(false, (c, s) =>
+				return source.Aggregate(false, (c, s) =>
 				{
-					if (!(c | data.Perms.Add(s))) return false;
+					if (!(c | data.Perms.Add(s)))
+					{
+						return false;
+					}
+
 					// OnUserPermissionGranted
-					HookCaller.CallStaticHook(593143994, id, s);
+					HookCaller.CallStaticHook(4054877424, id, s);
 					return true;
 
 				});
-				return true;
 			}
 			perm = perm.TrimEnd(Star);
 
-			(from s in source
-			 where s.StartsWith(perm)
-			 select s).Aggregate(false, (c, s) =>
-			{
-				if (!(c | data.Perms.Add(s))) return false;
-				// OnUserPermissionGranted
-				HookCaller.CallStaticHook(593143994, id, s);
-				return true;
+			return (from s in source
+					where s.StartsWith(perm)
+					select s).Aggregate(false, (c, s) =>
+					{
+						if (!(c | data.Perms.Add(s)))
+						{
+							return false;
+						}
 
-			});
-			return true;
+						// OnUserPermissionGranted
+						HookCaller.CallStaticHook(4054877424, id, s);
+						return true;
+
+					});
 		}
 		else
 		{
-			if (!data.Perms.Add(perm)) return false;
+			if (!data.Perms.Add(perm))
+			{
+				return false;
+			}
 
 			// OnUserPermissionGranted
-			HookCaller.CallStaticHook(593143994, id, perm);
+			HookCaller.CallStaticHook(4054877424, id, perm);
 			return true;
 		}
 	}
 	public virtual bool RevokeUserPermission(string id, string perm)
 	{
-		if (string.IsNullOrEmpty(perm)) return false;
+		if (string.IsNullOrEmpty(perm))
+		{
+			return false;
+		}
 
 		var userData = GetUserData(id);
 
@@ -760,36 +834,51 @@ public class Permission : Library
 			perm = perm.ToLower();
 		}
 
-		if (perm.EndsWith("*"))
+		if (perm.EndsWith(StarStr))
 		{
-			if (!perm.Equals("*"))
+			if (!perm.Equals(StarStr))
 			{
 				perm = perm.TrimEnd(Star);
+
 				return userData.Perms.RemoveWhere(s =>
 				{
-					if (!s.StartsWith(perm)) return false;
+					if (!s.StartsWith(perm))
+					{
+						return false;
+					}
+
 					// OnUserPermissionRevoked
-					HookCaller.CallStaticHook(1216290467, id, s);
+					HookCaller.CallStaticHook(1879829838, id, s);
 					return true;
 				}) > 0;
 			}
-			if (userData.Perms.Count <= 0) return false;
+
+			if (userData.Perms.Count <= 0)
+			{
+				return false;
+			}
 
 			userData.Perms.Clear();
 			return true;
 		}
 		else
 		{
-			if (!userData.Perms.Remove(perm)) return false;
+			if (!userData.Perms.Remove(perm))
+			{
+				return false;
+			}
 
 			// OnUserPermissionRevoked
-			HookCaller.CallStaticHook(1216290467, id, perm);
+			HookCaller.CallStaticHook(1879829838, id, perm);
 			return true;
 		}
 	}
 	public virtual bool GrantGroupPermission(string name, string perm, BaseHookable owner)
 	{
-		if (!PermissionExists(perm, owner) || !GroupExists(name)) return false;
+		if (!PermissionExists(perm, owner) || !GroupExists(name))
+		{
+			return false;
+		}
 
 		if (!name.IsLower())
 		{
@@ -803,7 +892,7 @@ public class Permission : Library
 			perm = perm.ToLower();
 		}
 
-		if (perm.EndsWith("*"))
+		if (perm.EndsWith(StarStr))
 		{
 			HashSet<string> source;
 			if (owner == null)
@@ -814,74 +903,94 @@ public class Permission : Library
 			{
 				return false;
 			}
-			if (perm.Equals("*"))
+			if (perm.Equals(StarStr))
 			{
-				source.Aggregate(false, (c, s) =>
+				return source.Aggregate(false, (c, s) =>
 				{
-					if (!(c | data.Perms.Add(s))) return false;
+					if (!(c | data.Perms.Add(s)))
+					{
+						return false;
+					}
+
 					// OnGroupPermissionGranted
-					HookCaller.CallStaticHook(2569513351, name, perm);
+					HookCaller.CallStaticHook(2479711677, name, perm);
 					return true;
 				});
-				return true;
 			}
 			perm = perm.TrimEnd(Star).ToLower();
-			(from s in source
-			 where s.StartsWith(perm)
-			 select s).Aggregate(false, (c, s) =>
-			{
-				if (!(c | data.Perms.Add(s))) return false;
-				// OnGroupPermissionGranted
-				HookCaller.CallStaticHook(2569513351, name, perm);
-				return true;
-			});
-			return true;
+
+			return (from s in source
+					where s.StartsWith(perm)
+					select s).Aggregate(false, (c, s) =>
+					{
+						if (!(c | data.Perms.Add(s)))
+						{
+							return false;
+						}
+
+						// OnGroupPermissionGranted
+						HookCaller.CallStaticHook(2479711677, name, perm);
+						return true;
+					});
 		}
 		else
 		{
-			if (!data.Perms.Add(perm)) return false;
+			if (!data.Perms.Add(perm))
+			{
+				return false;
+			}
 
 			// OnGroupPermissionGranted
-			HookCaller.CallStaticHook(2569513351, name, perm);
+			HookCaller.CallStaticHook(2479711677, name, perm);
 			return true;
 		}
 	}
 	public virtual bool RevokeGroupPermission(string name, string perm)
 	{
-		if (!GroupExists(name) || string.IsNullOrEmpty(perm)) return false;
+		if (!GroupExists(name) || string.IsNullOrEmpty(perm))
+		{
+			return false;
+		}
 
 		if (!name.IsLower())
 		{
 			name = name.ToLower();
 		}
 
-		if (!groupdata.TryGetValue(name, out var groupData)) return false;
+		if (!groupdata.TryGetValue(name, out var groupData))
+		{
+			return false;
+		}
 
 		if (!perm.IsLower())
 		{
 			perm = perm.ToLower();
 		}
 
-		if (perm.EndsWith("*"))
+		if (perm.EndsWith(StarStr))
 		{
-			if (!perm.Equals("*"))
+			if (!perm.Equals(StarStr))
 			{
 				perm = perm.TrimEnd(Star).ToLower();
 				return groupData.Perms.RemoveWhere(s =>
 				{
 					if (!s.StartsWith(perm)) return false;
 					// OnGroupPermissionRevoked
-					HookCaller.CallStaticHook(858041166, name, s);
+					HookCaller.CallStaticHook(3443835039, name, s);
 					return true;
 
 				}) > 0;
 			}
-			if (groupData.Perms.Count <= 0) return false;
+
+			if (groupData.Perms.Count <= 0)
+			{
+				return false;
+			}
 
 			foreach (var permission in groupData.Perms)
 			{
 				// OnGroupPermissionRevoked
-				HookCaller.CallStaticHook(858041166, name, permission);
+				HookCaller.CallStaticHook(3443835039, name, permission);
 			}
 
 			groupData.Perms.Clear();
@@ -889,17 +998,23 @@ public class Permission : Library
 		}
 		else
 		{
-			if (!groupData.Perms.Remove(perm)) return false;
+			if (!groupData.Perms.Remove(perm))
+			{
+				return false;
+			}
 
 			// OnGroupPermissionRevoked
-			HookCaller.CallStaticHook(858041166, name, perm);
+			HookCaller.CallStaticHook(3443835039, name, perm);
 			return true;
 		}
 	}
 
 	public virtual bool CreateGroup(string group, string title, int rank)
 	{
-		if (string.IsNullOrEmpty(group) || GroupExists(group)) return false;
+		if (string.IsNullOrEmpty(group) || GroupExists(group))
+		{
+			return false;
+		}
 
 		var value = new GroupData
 		{
@@ -915,12 +1030,15 @@ public class Permission : Library
 		groupdata.Add(group, value);
 
 		// OnGroupCreated
-		HookCaller.CallStaticHook(2242151940, group, title, rank);
+		HookCaller.CallStaticHook(1889097028, group, title, rank);
 		return true;
 	}
 	public virtual bool RemoveGroup(string group)
 	{
-		if (!GroupExists(group)) return false;
+		if (!GroupExists(group))
+		{
+			return false;
+		}
 
 		if (!group.IsLower())
 		{
@@ -943,7 +1061,7 @@ public class Permission : Library
 		if (removed)
 		{
 			// OnGroupDeleted
-			HookCaller.CallStaticHook(3899174310, group);
+			HookCaller.CallStaticHook(3702696305, group);
 		}
 		return true;
 	}
@@ -962,7 +1080,7 @@ public class Permission : Library
 		groupData.Title = title;
 
 		// OnGroupTitleSet
-		HookCaller.CallStaticHook(367139412, group, title);
+		HookCaller.CallStaticHook(1035562059, group, title);
 		return true;
 	}
 	public virtual bool SetGroupRank(string group, int rank)
@@ -979,7 +1097,7 @@ public class Permission : Library
 		groupData.Rank = rank;
 
 		// OnGroupRankSet
-		HookCaller.CallStaticHook(1812963218, group, rank);
+		HookCaller.CallStaticHook(407332709, group, rank);
 		return true;
 	}
 
@@ -1028,7 +1146,7 @@ public class Permission : Library
 		groupData.ParentGroup = parent;
 
 		// OnGroupParentSet
-		HookCaller.CallStaticHook(3339885885, group, parent);
+		HookCaller.CallStaticHook(3763369361, group, parent);
 		return true;
 	}
 	public virtual bool HasCircularParent(string group, string parent)
@@ -1045,7 +1163,7 @@ public class Permission : Library
 		void Cleanup()
 		{
 			hashSet.Clear();
-			Pool.Free(ref hashSet);
+			Pool.FreeUnmanaged(ref hashSet);
 		}
 
 		while (!string.IsNullOrEmpty(groupData.ParentGroup))

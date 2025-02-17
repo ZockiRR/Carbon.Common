@@ -1,12 +1,5 @@
 ﻿#if !MINIMAL
 
-/*
- *
- * Copyright (c) 2022-2023 Carbon Community
- * All rights reserved.
- *
- */
-
 using System.Windows.Controls;
 using API.Commands;
 using Newtonsoft.Json;
@@ -26,13 +19,14 @@ public partial class AdminModule
 
 		internal static ConfigurationTab _instance;
 		internal const float _applyChangesCooldown = 60;
-		internal static TimeSince _applyChangesTimeSince = _applyChangesCooldown / 2;
+		internal static TimeSince _applyChangesTimeSince = _applyChangesCooldown;
 
 		public static readonly string[] AuthLevels = new[] { "User", "Moderator", "Admin", "Developer" };
 
 		public enum ConfigTabs
 		{
 			ConVars,
+			CarbonAuto,
 			Items
 		}
 
@@ -40,7 +34,7 @@ public partial class AdminModule
 
 		public static ConfigurationTab Make()
 		{
-			var tab = new ConfigurationTab("configuration", "Configuration", Community.Runtime.CorePlugin,
+			var tab = new ConfigurationTab("configuration", "Configuration", Community.Runtime.Core,
 				(session, tab) =>
 				{
 					session.ClearStorage(null, "itemtabitem");
@@ -222,6 +216,7 @@ public partial class AdminModule
 								_applyChangesTimeSince = 0;
 								Refresh(tab, session);
 								Singleton.Draw(ap.Player);
+								Singleton.Save();
 							}
 						},
 						ap => _applyChangesTimeSince > _applyChangesCooldown
@@ -230,7 +225,7 @@ public partial class AdminModule
 					tab.AddToggle(0, "Spectating Info Overlay",
 						ap => Singleton.ConfigInstance.SpectatingInfoOverlay =
 							!Singleton.ConfigInstance.SpectatingInfoOverlay,
-						ap => !Singleton.ConfigInstance.SpectatingInfoOverlay);
+						ap => Singleton.ConfigInstance.SpectatingInfoOverlay);
 					tab.AddToggle(0, "Spectating End Teleport Back",
 						ap => Singleton.ConfigInstance.SpectatingEndTeleportBack =
 							!Singleton.ConfigInstance.SpectatingEndTeleportBack,
@@ -240,6 +235,14 @@ public partial class AdminModule
 						ap => Singleton.DataInstance.HidePluginIcons);
 
 					tab.AddName(0, "Customization");
+
+					tab.AddToggle(0, "Background Blur",
+						ap => Singleton.DataInstance.BackgroundBlur =
+							!Singleton.DataInstance.BackgroundBlur,
+						ap => Singleton.DataInstance.BackgroundBlur);
+
+					tab.AddRange(0, "Background Opacity", 0f, 100f, ap => Singleton.DataInstance.BackgroundOpacity * 100f,
+						(ap, value) => Singleton.DataInstance.BackgroundOpacity = value * 0.01f, ap => Singleton.DataInstance.BackgroundOpacity.ToString("0.0"));
 
 					tab.AddRange(0, "Title Underline Opacity", 0f, 100f,
 						ap => Singleton.DataInstance.Colors.TitleUnderlineOpacity * 100f,
@@ -330,6 +333,14 @@ public partial class AdminModule
 							ap => configTab == ConfigTabs.ConVars
 								? OptionButton.Types.Selected
 								: OptionButton.Types.None),
+						new OptionButton("Carbon Auto", ap =>
+							{
+								session.SetStorage(tab, "configtab", ConfigTabs.CarbonAuto);
+								Refresh(tab, ap);
+							},
+							ap => configTab == ConfigTabs.CarbonAuto
+								? OptionButton.Types.Selected
+								: OptionButton.Types.None),
 						new OptionButton("Items", ap =>
 						{
 							session.SetStorage(tab, "configtab", ConfigTabs.Items);
@@ -412,7 +423,7 @@ public partial class AdminModule
 									else if (field.FieldType == typeof(float))
 									{
 										tab.AddInputButton(1, field.Name, 0.2f,
-											new OptionInput(string.Empty, ap => $"{field.GetValue(null):n0}", 0,
+											new OptionInput(string.Empty, ap => $"{field.GetValue(null)}", 0,
 												false,
 												(ap, args) => field.SetValue(null, args.ToString(" ").ToFloat())),
 											new OptionButton($"<size=8>{snapshot.Value:n0}</size>",
@@ -422,7 +433,7 @@ public partial class AdminModule
 									else if (field.FieldType == typeof(int))
 									{
 										tab.AddInputButton(1, field.Name, 0.2f,
-											new OptionInput(string.Empty, ap => $"{field.GetValue(null):n0}", 0,
+											new OptionInput(string.Empty, ap => $"{field.GetValue(null)}", 0,
 												false, (ap, args) => field.SetValue(null, args.ToString(" ").ToInt())),
 											new OptionButton($"<size=8>{snapshot.Value:n0}</size>",
 												ap => field.SetValue(null, snapshot.Value)),
@@ -431,7 +442,7 @@ public partial class AdminModule
 									else if (field.FieldType == typeof(long))
 									{
 										tab.AddInputButton(1, field.Name, 0.2f,
-											new OptionInput(string.Empty, ap => $"{field.GetValue(null):n0}", 0,
+											new OptionInput(string.Empty, ap => $"{field.GetValue(null)}", 0,
 												false, (ap, args) => field.SetValue(null, args.ToString(" ").ToLong())),
 											new OptionButton($"<size=8>{snapshot.Value:n0}</size>",
 												ap => field.SetValue(null, snapshot.Value)),
@@ -440,7 +451,7 @@ public partial class AdminModule
 									else if (field.FieldType == typeof(ulong))
 									{
 										tab.AddInputButton(1, field.Name, 0.2f,
-											new OptionInput(string.Empty, ap => $"{field.GetValue(null):n0}", 0,
+											new OptionInput(string.Empty, ap => $"{field.GetValue(null)}", 0,
 												false,
 												(ap, args) => field.SetValue(null, args.ToString(" ").ToUlong())),
 											new OptionButton($"<size=8>{snapshot.Value:n0}</size>",
@@ -450,7 +461,7 @@ public partial class AdminModule
 									else if (field.FieldType == typeof(uint))
 									{
 										tab.AddInputButton(1, field.Name, 0.2f,
-											new OptionInput(string.Empty, ap => $"{field.GetValue(null):n0}", 0,
+											new OptionInput(string.Empty, ap => $"{field.GetValue(null)}", 0,
 												false, (ap, args) => field.SetValue(null, args.ToString(" ").ToUint())),
 											new OptionButton($"<size=8>{snapshot.Value:n0}</size>",
 												ap => field.SetValue(null, snapshot.Value)),
@@ -463,6 +474,99 @@ public partial class AdminModule
 								}
 							}
 
+							break;
+						}
+
+						case ConfigTabs.CarbonAuto:
+						{
+							var carbonAutoSearch = session.GetStorage(tab, "carbonautosearch", string.Empty);
+							var currentlyDisplaying = CarbonAuto.AutoCache.Count(x =>
+								string.IsNullOrEmpty(carbonAutoSearch) || x.Key.Contains(carbonAutoSearch));
+
+							if (string.IsNullOrEmpty(carbonAutoSearch))
+							{
+								tab.AddInput(1, $"Search ({currentlyDisplaying:n0})", ap => carbonAutoSearch, 0, false,
+									(ap, args) =>
+									{
+										ap.SetStorage(tab, "carbonautosearch", args.ToString(" "));
+										Refresh(tab, ap);
+									});
+							}
+							else
+							{
+								tab.AddInputButton(1, $"Search ({currentlyDisplaying:n0})", 0.08f,
+									new OptionInput(string.Empty, ap => carbonAutoSearch, 0, false, (ap, args) =>
+									{
+										ap.SetStorage(tab, "carbonautosearch", args.ToString(" "));
+										Refresh(tab, ap);
+									}),
+									new OptionButton("X", ap =>
+									{
+										ap.SetStorage(tab, "carbonautosearch", string.Empty);
+										Refresh(tab, ap);
+									}, ap => OptionButton.Types.Important));
+							}
+
+							tab.AddWidget(1, 1, (playerSession, cui, container, parent) =>
+							{
+								cui.CreateText(container, parent, "1 1 1 0.5",
+									"All values with <b>(*)</b> indicate that they're a multiplier value \nrelative to Rust's native value the configuration is defined for.",
+									8, align: TextAnchor.MiddleRight, xMax: 0.48f);
+
+								cui.CreateText(container, parent, "1 1 1 0.5",
+									"<color=orange>Orange variables</color> indicate will enforce the server\nto modded once the value is not <b>-1</b>.",
+									8, align: TextAnchor.MiddleLeft, xMin: 0.52f);
+							});
+
+							foreach (var cache in CarbonAuto.AutoCache.OrderBy(x => x.Value.Variable.DisplayName).Where(x =>
+								         string.IsNullOrEmpty(carbonAutoSearch) || x.Key.Contains(carbonAutoSearch)))
+							{
+								var type = cache.Value.GetVarType();
+								if (type == typeof(string))
+								{
+									tab.AddInput(1, cache.Value.Variable.ForceModded ? $"<color=orange>{cache.Value.Variable.DisplayName}</color>" : cache.Value.Variable.DisplayName, ap => cache.Value.GetValue()?.ToString(), 0, false,
+										(ap, args) => cache.Value.SetValue(args.ToString(" ")),
+										tooltip: $"{cache.Value.Variable.Help} ({cache.Key})");
+								}
+								else if (type == typeof(bool))
+								{
+									tab.AddToggle(1, cache.Value.Variable.ForceModded ? $"<color=orange>{cache.Value.Variable.DisplayName}</color>" : cache.Value.Variable.DisplayName,
+										ap => cache.Value.SetValue(!(bool)cache.Value.GetValue()),
+										ap => (bool)cache.Value.GetValue(),
+										tooltip: $"{cache.Value.Variable.Help} ({cache.Key})");
+								}
+								else if (type == typeof(float))
+								{
+									tab.AddInputButton(1, cache.Value.Variable.ForceModded ? $"<color=orange>{cache.Value.Variable.DisplayName}</color>" : cache.Value.Variable.DisplayName, 0.2f,
+										new OptionInput(string.Empty, ap => $"{cache.Value.GetValue()}", 0,
+											false, (ap, args) => cache.Value.SetValue(args.ToString(" ").ToFloat())),
+										new OptionButton($"<size=8>-1</size>",
+											ap => cache.Value.SetValue(-1)),
+										tooltip: $"{cache.Value.Variable.Help} ({cache.Key})");
+								}
+								else if (type == typeof(int))
+								{
+									tab.AddInputButton(1, cache.Value.Variable.ForceModded ? $"<color=orange>{cache.Value.Variable.DisplayName}</color>" : cache.Value.Variable.DisplayName, 0.2f,
+										new OptionInput(string.Empty, ap => $"{cache.Value.GetValue()}", 0,
+											false, (ap, args) => cache.Value.SetValue(args.ToString(" ").ToInt())),
+										new OptionButton($"<size=8>-1</size>",
+											ap => cache.Value.SetValue(-1)),
+										tooltip: $"{cache.Value.Variable.Help} ({cache.Key})");
+								}
+								else if (type == typeof(long))
+								{
+									tab.AddInputButton(1, cache.Value.Variable.ForceModded ? $"<color=orange>{cache.Value.Variable.DisplayName}</color>" : cache.Value.Variable.DisplayName, 0.2f,
+										new OptionInput(string.Empty, ap => $"{cache.Value.GetValue()}", 0,
+											false, (ap, args) => cache.Value.SetValue(args.ToString(" ").ToLong())),
+										new OptionButton($"<size=8>-1</size>",
+											ap => cache.Value.SetValue(-1)),
+										tooltip: $"{cache.Value.Variable.Help} ({cache.Key})");
+								}
+								else
+								{
+									tab.AddText(1, $"{(cache.Value.Variable.ForceModded ? $"<color=orange>{cache.Value.Variable.DisplayName}</color>" : cache.Value.Variable.DisplayName)} ({type})", 10, "1 1 1 1");
+								}
+							}
 							break;
 						}
 
@@ -521,6 +625,7 @@ public partial class AdminModule
 
 							break;
 						}
+
 					}
 				}
 			}
@@ -591,6 +696,8 @@ public partial class AdminModule
 		}
 
 		player.GiveItem(resultItem);
+
+		Puts($" {player.Connection} created {item.displayName}[{item.shortname}] x {resultItem.amount}{(isBlueprint ? "[bp]" : string.Empty)}");
 
 		session.ClearStorage(null, "itemtabitem");
 

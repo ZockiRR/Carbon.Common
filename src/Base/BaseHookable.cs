@@ -1,14 +1,6 @@
 ﻿using System.Diagnostics;
 using System.Runtime.CompilerServices;
-using Facepunch.Extend;
 using Newtonsoft.Json;
-
-/*
- *
- * Copyright (c) 2022-2024 Carbon Community
- * All rights reserved.
- *
- */
 
 namespace Carbon.Base;
 
@@ -21,11 +13,11 @@ public class BaseHookable
 	public HookCachePool HookPool = new();
 	public List<uint> IgnoredHooks = new();
 
-	public class HookCachePool : Dictionary<uint, List<CachedHook>>
+	public class HookCachePool : Dictionary<uint, CachedHookInstance>
 	{
 		public void Reset()
 		{
-			foreach (var hook in Values.SelectMany(value => value))
+			foreach (var hook in Values.SelectMany(value => value.Hooks))
 			{
 				hook.Reset();
 			}
@@ -33,13 +25,24 @@ public class BaseHookable
 
 		public void EnableDebugging(bool wants)
 		{
-			foreach (var hook in Values.SelectMany(value => value))
+			foreach (var hook in Values.SelectMany(value => value.Hooks))
 			{
 				hook.EnableDebugging(wants);
 			}
 		}
 	}
 
+	public class CachedHookInstance
+	{
+		public CachedHook PrimaryHook;
+		public List<CachedHook> Hooks;
+
+		public bool IsValid() => Hooks != null && Hooks.Count > 0;
+		public void RefreshPrimary()
+		{
+			PrimaryHook = Hooks.OrderByDescending(x => x.Parameters.Length).FirstOrDefault();
+		}
+	}
 	public class CachedHook
 	{
 		public string Name;
@@ -53,6 +56,7 @@ public class BaseHookable
 		public bool IsAsync;
 		public bool IsDebugged;
 
+		public int Exceptions;
 		public int LagSpikes;
 		public int TimesFired;
 		public TimeSpan HookTime;
@@ -65,6 +69,7 @@ public class BaseHookable
 
 		public void Reset()
 		{
+			Exceptions = 0;
 			LagSpikes = 0;
 			TimesFired = 0;
 			HookTime = default;
@@ -80,7 +85,7 @@ public class BaseHookable
 			HookTime += hookTime;
 			MemoryUsage += memoryUsed;
 
-			TimesFired++;
+			Interlocked.Increment(ref TimesFired);
 
 			if (IsDebugged)
 			{
@@ -90,7 +95,11 @@ public class BaseHookable
 		public void OnLagSpike(BaseHookable hookable)
 		{
 			hookable.TotalHookLagSpikes++;
-			LagSpikes++;
+			Interlocked.Increment(ref LagSpikes);
+		}
+		public void OnException()
+		{
+			Interlocked.Increment(ref Exceptions);
 		}
 
 		public static CachedHook Make(string hookName, uint hookId, BaseHookable hookable, MethodInfo method)
@@ -117,30 +126,26 @@ public class BaseHookable
 		}
 	}
 
+	public virtual bool ManualSubscriptions => false;
+
 	[JsonProperty]
 	public string Name { get; set; }
 
 	[JsonProperty]
 	public virtual VersionNumber Version { get; set; }
 
-	[JsonProperty]
-	public TimeSpan TotalHookTime { get; internal set; }
-
-	[JsonProperty]
-	public int TotalHookFires { get; internal set; }
-
-	[JsonProperty]
-	public double TotalMemoryUsed { get; internal set; }
-
-	[JsonProperty]
-	public int TotalHookLagSpikes { get; internal set; }
+	[JsonProperty] public TimeSpan TotalHookTime;
+	[JsonProperty] public int TotalHookFires;
+	[JsonProperty] public double TotalMemoryUsed;
+	[JsonProperty] public int TotalHookLagSpikes;
+	[JsonProperty] public int TotalHookExceptions;
 
 	[JsonProperty]
 	public double Uptime => _initializationTime.GetValueOrDefault();
 
 	public bool HasBuiltHookCache { get; internal set; }
 	public bool HasInitialized { get; internal set; }
-	public Type Type { get; internal set; }
+	public Type HookableType { get; internal set; }
 	public bool InternalCallHookOverriden { get; internal set; } = true;
 
 	#region Tracking
@@ -148,11 +153,6 @@ public class BaseHookable
 	internal Stopwatch _trackStopwatch = new();
 	internal int _currentGcCount;
 	internal TimeSince? _initializationTime;
-
-#if DEBUG
-	public HookTimeAverage HookTimeAverage { get; protected set; }
-	public MemoryAverage MemoryAverage { get; protected set; }
-#endif
 
 	public TimeSpan CurrentHookTime { get; internal set; }
 	public static long CurrentMemory => GC.GetTotalMemory(false);
@@ -165,18 +165,6 @@ public class BaseHookable
 		{
 			_initializationTime = 0;
 		}
-
-#if DEBUG
-		if (HookTimeAverage == null)
-		{
-			HookTimeAverage = new(Community.Runtime.Config.Debugging.PluginTrackingTime);
-		}
-
-		if (MemoryAverage == null)
-		{
-			MemoryAverage = new(Community.Runtime.Config.Debugging.PluginTrackingTime);
-		}
-#endif
 	}
 	public virtual void TrackStart()
 	{
@@ -208,7 +196,18 @@ public class BaseHookable
 		_trackStopwatch.Reset();
 	}
 
-#endregion
+	protected void OnException(uint hook)
+	{
+		Interlocked.Increment(ref TotalHookExceptions);
+
+		var overrides = HookPool[hook].Hooks;
+		foreach (var element in overrides)
+		{
+			element.OnException();
+		}
+	}
+
+	#endregion
 
 	public virtual async ValueTask OnAsyncServerShutdown()
 	{
@@ -226,7 +225,7 @@ public class BaseHookable
 
 		HookPool.Clear();
 
-		var methods = Type.GetMethods(flag);
+		var methods = HookableType.GetMethods(flag);
 
 		foreach (var method in methods)
 		{
@@ -240,35 +239,48 @@ public class BaseHookable
 				}
 			}
 
-			if (!HookPool.TryGetValue(id, out var hooks))
+			if (!HookPool.TryGetValue(id, out var instance))
 			{
-				HookPool.Add(id, hooks = new());
+				instance = new();
+				instance.Hooks = new(5);
+
+				HookPool.Add(id, instance);
 			}
 
-			hooks.Add(CachedHook.Make(method.Name, id, this, method));
+			instance.Hooks.Add(CachedHook.Make(method.Name, id, this, method));
+			instance.RefreshPrimary();
+
+			InternalHooks.Handle(method.Name, true);
 		}
 
-		var methodAttributes = Type.GetMethods(flag | BindingFlags.Public);
+		var methodAttributes = HookableType.GetMethods(flag | BindingFlags.Public);
 
 		foreach (var method in methodAttributes)
 		{
 			var methodAttribute = method.GetCustomAttribute<HookMethodAttribute>();
 
-			if (methodAttribute == null) continue;
-
-			var id = HookStringPool.GetOrAdd(string.IsNullOrEmpty(methodAttribute.Name) ? method.Name : methodAttribute.Name);
-
-			if (!HookPool.TryGetValue(id, out var hooks))
-			{
-				HookPool.Add(id, hooks = new());
-			}
-
-			if(hooks.Any(x => x.Method == method))
+			if (methodAttribute == null)
 			{
 				continue;
 			}
 
-			hooks.Add(CachedHook.Make(method.Name, id, this, method));
+			var id = HookStringPool.GetOrAdd(string.IsNullOrEmpty(methodAttribute.Name) ? method.Name : methodAttribute.Name);
+
+			if (!HookPool.TryGetValue(id, out var instance))
+			{
+				instance = new();
+				instance.Hooks = new(5);
+
+				HookPool.Add(id, instance);
+			}
+
+			if(instance.Hooks.Any(x => x.Method == method))
+			{
+				continue;
+			}
+
+			instance.Hooks.Add(CachedHook.Make(method.Name, id, this, method));
+			instance.RefreshPrimary();
 		}
 
 		HasBuiltHookCache = true;
@@ -284,22 +296,34 @@ public class BaseHookable
 
 	public void Subscribe(string hook)
 	{
-		if (IgnoredHooks == null) return;
+		if (IgnoredHooks == null)
+		{
+			return;
+		}
 
 		var hash = HookStringPool.GetOrAdd(hook);
 
-		if (!IgnoredHooks.Contains(hash)) return;
+		if (!IgnoredHooks.Contains(hash))
+		{
+			return;
+		}
 
 		Community.Runtime.HookManager.Subscribe(hook, Name);
 		IgnoredHooks.Remove(hash);
 	}
 	public void Unsubscribe(string hook)
 	{
-		if (IgnoredHooks == null) return;
+		if (IgnoredHooks == null)
+		{
+			return;
+		}
 
 		var hash = HookStringPool.GetOrAdd(hook);
 
-		if (IgnoredHooks.Contains(hash)) return;
+		if (IgnoredHooks.Contains(hash))
+		{
+			return;
+		}
 
 		Community.Runtime.HookManager.Unsubscribe(hook, Name);
 		IgnoredHooks.Add(hash);

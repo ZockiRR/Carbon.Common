@@ -2,38 +2,30 @@
 using Carbon.Profiler;
 using Newtonsoft.Json;
 
-/*
- *
- * Copyright (c) 2022-2024 Carbon Community
- * All rights reserved.
- *
- */
-
 namespace Carbon.Core;
 
-public static class ModLoader
+public static partial class ModLoader
 {
-	public static bool IsBatchComplete { get; set; }
-	public static List<ModPackage> LoadedPackages = new();
-	public static Dictionary<string, FailedCompilation> FailedCompilations = new();
+	public static bool IsBatchComplete;
+	public static PackageBank Packages = [];
+	public static Dictionary<string, CompilationResult> FailedCompilations = new();
 
 	internal static Dictionary<string, Type> TypeDictionaryCache { get; } = new();
 	internal static Dictionary<string, List<string>> PendingRequirees { get; } = new();
 	internal static List<string> PostBatchFailedRequirees { get; } = new();
 	internal static bool FirstLoadSinceStartup { get; set; } = true;
 
+	private static object[] argBuffer = new object[1];
+
 	internal const string CARBON_PLUGIN = "CarbonPlugin";
 	internal const string RUST_PLUGIN = "RustPlugin";
 	internal const string COVALENCE_PLUGIN = "CovalencePlugin";
 
-	public static FailedCompilation GetOrCreateFailedCompilation(string file, bool clear = false)
+	public static CompilationResult GetCompilationResult(string file, bool clear = false)
 	{
 		if (!FailedCompilations.TryGetValue(file, out var result))
 		{
-			FailedCompilations[file] = result = new()
-			{
-				File = file
-			};
+			FailedCompilations[file] = result = CompilationResult.Create(file);
 		}
 
 		if (clear)
@@ -43,28 +35,25 @@ public static class ModLoader
 
 		return result;
 	}
-	public static void RegisterPackage(ModPackage package)
+	public static void RegisterPackage(Package package)
 	{
-		if (!LoadedPackages.Contains(package))
+		if (!Packages.Contains(package))
 		{
-			LoadedPackages.Add(package);
+			Packages.Add(package);
 		}
 	}
-	public static ModPackage GetPackage(string name)
+	public static Package GetPackage(string name)
 	{
-		return LoadedPackages.FirstOrDefault(mod => mod.Name.StartsWith(name, StringComparison.OrdinalIgnoreCase));
+		return Packages.FirstOrDefault(mod => mod.Name.StartsWith(name, StringComparison.OrdinalIgnoreCase));
 	}
 	public static RustPlugin FindPlugin(string name)
 	{
-		return LoadedPackages.SelectMany(package => package.Plugins).FirstOrDefault(plugin => plugin.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
+		return Packages.SelectMany(package => package.Plugins).FirstOrDefault(plugin => plugin.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
 	}
 
 	static ModLoader()
 	{
-		Community.Runtime.Events.Subscribe(
-			CarbonEvent.OnServerInitialized,
-			x => OnPluginProcessFinished()
-		);
+		Community.Runtime.Events.Subscribe(CarbonEvent.OnServerInitialized, _ => OnPluginProcessFinished());
 	}
 
 	public static List<string> GetRequirees(Plugin initial)
@@ -97,6 +86,11 @@ public static class ModLoader
 	}
 	public static void AddPostBatchFailedRequiree(string requiree)
 	{
+		if (PostBatchFailedRequirees.Contains(requiree))
+		{
+			return;
+		}
+
 		PostBatchFailedRequirees.Add(requiree);
 	}
 
@@ -150,8 +144,8 @@ public static class ModLoader
 	{
 		ClearAllRequirees();
 
-		var list = Facepunch.Pool.GetList<ModPackage>();
-		list.AddRange(LoadedPackages);
+		var list = Facepunch.Pool.Get<List<Package>>();
+		list.AddRange(Packages);
 
 		foreach (var mod in list)
 		{
@@ -160,7 +154,7 @@ public static class ModLoader
 			UnloadCarbonMod(mod.Name);
 		}
 
-		Facepunch.Pool.FreeList(ref list);
+		Facepunch.Pool.FreeUnmanaged(ref list);
 	}
 	public static bool UnloadCarbonMod(string name)
 	{
@@ -175,29 +169,9 @@ public static class ModLoader
 		return true;
 	}
 
-	public static void InitializePlugins(ModPackage mod)
+	public static void UninitializePlugins(Package mod)
 	{
-		Logger.Warn($"Initializing mod '{mod.Name}'");
-
-		foreach (var type in mod.AllTypes)
-		{
-			try
-			{
-				if (!(type.Namespace.Equals("Oxide.Plugins") || type.Namespace.Equals("Carbon.Plugins"))) continue;
-
-				if (!IsValidPlugin(type, true)) continue;
-
-				if (!InitializePlugin(type, out var plugin, mod)) continue;
-				plugin.HasInitialized = true;
-
-				OnPluginProcessFinished();
-			}
-			catch (Exception ex) { Logger.Error($"Failed loading '{mod.Name}'", ex); }
-		}
-	}
-	public static void UninitializePlugins(ModPackage mod)
-	{
-		var plugins = Facepunch.Pool.GetList<RustPlugin>();
+		var plugins = Facepunch.Pool.Get<List<RustPlugin>>();
 		plugins.AddRange(mod.Plugins);
 
 		foreach (var plugin in plugins)
@@ -209,10 +183,32 @@ public static class ModLoader
 			catch (Exception ex) { Logger.Error($"Failed unloading '{mod.Name}'", ex); }
 		}
 
-		Facepunch.Pool.FreeList(ref plugins);
+		Facepunch.Pool.FreeUnmanaged(ref plugins);
 	}
 
-	public static bool InitializePlugin(Type type, out RustPlugin plugin, ModPackage package = default, Action<RustPlugin> preInit = null, bool precompiled = false)
+	public static RustPlugin InitializePlugin(Assembly assembly, Package package = default, Action<RustPlugin> preInit = null, bool precompiled = false)
+	{
+		foreach (var type in assembly.GetTypes())
+		{
+			if(type.BaseType == null)
+			{
+				continue;
+			}
+
+			if(!IsValidPlugin(type.BaseType, false))
+			{
+				continue;
+			}
+
+			if(InitializePlugin(type, out var plugin, package, preInit, precompiled))
+			{
+				return plugin;
+			}
+		}
+
+		return null;
+	}
+	public static bool InitializePlugin(Type type, out RustPlugin plugin, Package package = default, Action<RustPlugin> preInit = null, bool precompiled = false)
 	{
 		var constructor = type.GetConstructor(Type.EmptyTypes);
 		var instance = FormatterServices.GetUninitializedObject(type);
@@ -238,10 +234,12 @@ public static class ModLoader
 			UninitializePlugin(existentPlugin);
 		}
 
-		plugin.SetProcessor(Community.Runtime.ScriptProcessor);
+		plugin.SetProcessor(Community.Runtime.ScriptProcessor, null);
 		plugin.SetupMod(package, title, author, version, description);
 
 		plugin.IsPrecompiled = precompiled;
+
+		preInit?.Invoke(plugin);
 
 		try
 		{
@@ -252,9 +250,15 @@ public static class ModLoader
 			Analytics.plugin_constructor_failure(plugin);
 
 			// OnConstructorFail
-			HookCaller.CallStaticHook(937285752, plugin, ex);
+			HookCaller.CallStaticHook(2684549964, plugin, ex);
 
-			Logger.Error($"Failed executing constructor for {plugin.ToPrettyString()}. This is fatal! Unloading plugin.", ex);
+			var innerException = ex.InnerException;
+			var compilationFailure = GetCompilationResult(plugin.FilePath);
+			Trace trace = default;
+			trace.Message = $"Constructor threw an exception ({innerException.Message})";
+			trace.Number = ".ctor";
+			compilationFailure.AppendError(trace);
+			Logger.Error($"Failed executing constructor for {plugin.ToPrettyString()}. This is fatal!", ex);
 			return false;
 		}
 
@@ -270,8 +274,6 @@ public static class ModLoader
 
 		package.AddPlugin(plugin);
 
-		preInit?.Invoke(plugin);
-
 		plugin.ILoadConfig();
 		plugin.ILoadDefaultMessages();
 
@@ -284,13 +286,17 @@ public static class ModLoader
 			}
 		}
 
+		plugin.IProcessPatches();
 		plugin.ILoad();
 
-		ProcessCommands(type, plugin);
+		if (!plugin.ManualCommands)
+		{
+			ProcessCommands(type, plugin);
+		}
 
 		Interface.Oxide.RootPluginManager.AddPlugin(plugin);
 
-		var isProfiled = MonoProfiler.Recording && Community.Runtime.MonoProfilerConfig.IsWhitelisted(MonoProfilerConfig.ProfileTypes.Plugin, Path.GetFileNameWithoutExtension(plugin.FileName));
+		var isProfiled = MonoProfiler.IsRecording && Community.Runtime.MonoProfilerConfig.IsWhitelisted(MonoProfilerConfig.ProfileTypes.Plugin, Path.GetFileNameWithoutExtension(plugin.FileName));
 
 		Logger.Log($"{(precompiled ? "Preloaded" : "Loaded")} plugin {plugin.ToPrettyString()}" +
 		           $"{(precompiled ? string.Empty : $" [{plugin.CompileTime.TotalMilliseconds:0}ms]")}" +
@@ -298,14 +304,19 @@ public static class ModLoader
 
 		return true;
 	}
-	public static bool UninitializePlugin(RustPlugin plugin, bool premature = false)
+	public static bool UninitializePlugin(RustPlugin plugin, bool premature = false, bool unloadDependantPlugins = true)
 	{
 		if (!premature && !plugin.IsLoaded)
 		{
 			return true;
 		}
 
-		plugin.IUnloadDependantPlugins();
+		plugin.IProcessUnpatches();
+
+		if (unloadDependantPlugins)
+		{
+			plugin.IUnloadDependantPlugins();
+		}
 
 		if (!premature)
 		{
@@ -318,7 +329,7 @@ public static class ModLoader
 		if (!premature)
 		{
 			// OnPluginUnloaded
-			HookCaller.CallStaticHook(3843290135, plugin);
+			HookCaller.CallStaticHook(1250294368, plugin);
 		}
 
 		plugin.Dispose();
@@ -331,7 +342,7 @@ public static class ModLoader
 			Plugin.InternalApplyAllPluginReferences();
 		}
 
-		plugin.IClearMemory();
+		// plugin.IClearMemory();
 
 		return true;
 	}
@@ -380,8 +391,16 @@ public static class ModLoader
 
 	public static bool IsValidPlugin(Type type, bool recursive)
 	{
-		if (type == null) return false;
-		if (type.Name is CARBON_PLUGIN or RUST_PLUGIN or COVALENCE_PLUGIN) return true;
+		if (type == null)
+		{
+			return false;
+		}
+
+		if (type.Name is CARBON_PLUGIN or RUST_PLUGIN or COVALENCE_PLUGIN)
+		{
+			return true;
+		}
+
 		return recursive && IsValidPlugin(type.BaseType, recursive);
 	}
 
@@ -412,24 +431,24 @@ public static class ModLoader
 				foreach (var commandName in command.Names)
 				{
 					var name = string.IsNullOrEmpty(prefix) ? commandName : $"{prefix}.{commandName}";
-					Community.Runtime.CorePlugin.cmd.AddChatCommand(name, hookable, method, help: string.Empty, reference: method, permissions: ps, groups: gs, authLevel: authLevel, cooldown: cooldownTime, isHidden: hidden, silent: true);
-					Community.Runtime.CorePlugin.cmd.AddConsoleCommand(name, hookable, method, help: string.Empty, reference: method, permissions: ps, groups: gs, authLevel: authLevel, cooldown: cooldownTime, isHidden: hidden, silent: true);
+					Community.Runtime.Core.cmd.AddChatCommand(name, hookable, method, help: string.Empty, reference: method, permissions: ps, groups: gs, authLevel: authLevel, cooldown: cooldownTime, isHidden: hidden, silent: true);
+					Community.Runtime.Core.cmd.AddConsoleCommand(name, hookable, method, help: string.Empty, reference: method, permissions: ps, groups: gs, authLevel: authLevel, cooldown: cooldownTime, isHidden: hidden, silent: true);
 				}
 			}
 
 			foreach (var chatCommand in chatCommands)
 			{
-				Community.Runtime.CorePlugin.cmd.AddChatCommand(string.IsNullOrEmpty(prefix) ? chatCommand.Name : $"{prefix}.{chatCommand.Name}", hookable, method, help: chatCommand.Help, reference: method, permissions: ps, groups: gs, authLevel: authLevel, cooldown: cooldownTime, isHidden: hidden, silent: true);
+				Community.Runtime.Core.cmd.AddChatCommand(string.IsNullOrEmpty(prefix) ? chatCommand.Name : $"{prefix}.{chatCommand.Name}", hookable, method, help: chatCommand.Help, reference: method, permissions: ps, groups: gs, authLevel: authLevel, cooldown: cooldownTime, isHidden: hidden, silent: true);
 			}
 
 			foreach (var consoleCommand in consoleCommands)
 			{
-				Community.Runtime.CorePlugin.cmd.AddConsoleCommand(string.IsNullOrEmpty(prefix) ? consoleCommand.Name : $"{prefix}.{consoleCommand.Name}", hookable, method, help: consoleCommand.Help, reference: method, permissions: ps, groups: gs, authLevel: authLevel, cooldown: cooldownTime, isHidden: hidden, silent: true);
+				Community.Runtime.Core.cmd.AddConsoleCommand(string.IsNullOrEmpty(prefix) ? consoleCommand.Name : $"{prefix}.{consoleCommand.Name}", hookable, method, help: consoleCommand.Help, reference: method, permissions: ps, groups: gs, authLevel: authLevel, cooldown: cooldownTime, isHidden: hidden, silent: true);
 			}
 
 			foreach (var protectedCommand in protectedCommands)
 			{
-				Community.Runtime.CorePlugin.cmd.AddConsoleCommand(Community.Protect(string.IsNullOrEmpty(prefix) ? protectedCommand.Name : $"{prefix}.{protectedCommand.Name}"), hookable, method, help: protectedCommand.Help, reference: method, permissions: ps, groups: gs, authLevel: authLevel, cooldown: cooldownTime, isHidden: true, silent: true);
+				Community.Runtime.Core.cmd.AddConsoleCommand(Community.Protect(string.IsNullOrEmpty(prefix) ? protectedCommand.Name : $"{prefix}.{protectedCommand.Name}"), hookable, method, help: protectedCommand.Help, reference: method, permissions: ps, groups: gs, authLevel: authLevel, cooldown: cooldownTime, isHidden: true, silent: true);
 			}
 
 			foreach (var rconCommand in rconCommands)
@@ -440,7 +459,8 @@ public static class ModLoader
 					Reference = hookable,
 					Callback = arg =>
 					{
-						var result = method.Invoke(hookable, new object[] { arg });
+						argBuffer[0] = arg;
+						var result = method.Invoke(hookable, argBuffer);
 
 						if (result != null)
 						{
@@ -457,11 +477,13 @@ public static class ModLoader
 
 			if (ps != null && ps.Length > 0)
 			{
+				var perm = Interface.Oxide.Permission;
+
 				foreach (var permission in ps)
 				{
-					if (hookable is RustPlugin plugin && !plugin.permission.PermissionExists(permission, hookable))
+					if (!perm.PermissionExists(permission, hookable))
 					{
-						plugin.permission.RegisterPermission(permission, hookable);
+						perm.RegisterPermission(permission, hookable);
 					}
 				}
 			}
@@ -481,7 +503,7 @@ public static class ModLoader
 
 			if (var != null)
 			{
-				Community.Runtime.CorePlugin.cmd.AddConsoleCommand(string.IsNullOrEmpty(prefix) ? var.Name : $"{prefix}.{var.Name}", hookable, (player, command, args) =>
+				Community.Runtime.Core.cmd.AddConsoleCommand(string.IsNullOrEmpty(prefix) ? var.Name : $"{prefix}.{var.Name}", hookable, (player, command, args) =>
 				{
 					var value = field.GetValue(hookable);
 
@@ -547,7 +569,7 @@ public static class ModLoader
 
 			if (var != null)
 			{
-				Community.Runtime.CorePlugin.cmd.AddConsoleCommand(string.IsNullOrEmpty(prefix) ? var.Name : $"{prefix}.{var.Name}", hookable, (player, command, args) =>
+				Community.Runtime.Core.cmd.AddConsoleCommand(string.IsNullOrEmpty(prefix) ? var.Name : $"{prefix}.{var.Name}", hookable, (player, command, args) =>
 				{
 					var value = property.GetValue(hookable);
 
@@ -612,192 +634,66 @@ public static class ModLoader
 
 	public static void OnPluginProcessFinished()
 	{
-		var temp = Facepunch.Pool.GetList<string>();
+		var temp = Facepunch.Pool.Get<List<string>>();
 		temp.AddRange(PostBatchFailedRequirees);
 
 		foreach (var plugin in temp)
 		{
-			var file = System.IO.Path.GetFileNameWithoutExtension(plugin);
+			var file = Path.GetFileNameWithoutExtension(plugin);
 			Community.Runtime.ScriptProcessor.ClearIgnore(file);
 			Community.Runtime.ScriptProcessor.Prepare(file, plugin);
 		}
 
 		PostBatchFailedRequirees.Clear();
 
-		if (PostBatchFailedRequirees.Count == 0)
+		if (temp.Count == 0)
 		{
 			IsBatchComplete = true;
 		}
 
 		temp.Clear();
-		Facepunch.Pool.FreeList(ref temp);
+		Facepunch.Pool.FreeUnmanaged(ref temp);
 
-		if (ConVar.Global.skipAssetWarmup_crashes)
+		if (!Community.IsServerInitialized)
 		{
-			Community.Runtime.MarkServerInitialized(true);
+			return;
 		}
 
-		if (Community.IsServerInitialized)
-		{
-			var counter = 0;
-			var plugins = Facepunch.Pool.GetList<RustPlugin>();
+		var counter = 0;
+		var plugins = Facepunch.Pool.Get<List<RustPlugin>>();
+		plugins.AddRange(Packages.SelectMany(mod => mod.Plugins));
 
-			foreach (var mod in LoadedPackages)
+		foreach (var plugin in plugins)
+		{
+			try
 			{
-				foreach (var plugin in mod.Plugins)
-				{
-					plugins.Add(plugin);
-				}
+				plugin.InternalApplyPluginReferences();
 			}
-
-			foreach (var plugin in plugins)
+			catch(Exception exception)
 			{
-				try { plugin.InternalApplyPluginReferences(); } catch { }
+				Logger.Error($"Failed applying PluginReferences for '{plugin.ToPrettyString()}'", exception);
 			}
-
-			foreach (var plugin in plugins)
-			{
-				if (plugin.HasInitialized) continue;
-				counter++;
-
-				plugin.HasInitialized = true;
-				plugin.CallHook("OnServerInitialized", FirstLoadSinceStartup);
-			}
-
-			FirstLoadSinceStartup = false;
-
-			Facepunch.Pool.FreeList(ref plugins);
-
-			if (counter > 1)
-			{
-				Analytics.batch_plugin_types();
-
-				Logger.Log($" Batch completed! OSI on {counter:n0} {counter.Plural("plugin", "plugins")}.");
-			}
-
-			Community.Runtime.Events.Trigger(CarbonEvent.AllPluginsLoaded, EventArgs.Empty);
 		}
-	}
 
-	[JsonObject(MemberSerialization.OptIn)]
-	public struct ModPackage
-	{
-		public Assembly Assembly;
-		public Type[] AllTypes;
-
-		[JsonProperty] public string Name;
-		[JsonProperty] public string File;
-		[JsonProperty] public bool IsCoreMod;
-		[JsonProperty] public List<RustPlugin> Plugins;
-
-		public bool IsValid { get; internal set; }
-		public readonly int PluginCount => IsValid ? Plugins.Count : default;
-
-		public ModPackage AddPlugin(RustPlugin plugin)
+		foreach (var plugin in plugins.Where(plugin => !plugin.HasInitialized))
 		{
-			if (!IsValid || Plugins == null || Plugins.Contains(plugin))
-			{
-				return this;
-			}
+			counter++;
 
-			Plugins.Add(plugin);
-			return this;
+			plugin.HasInitialized = true;
+			plugin.CallHook("OnServerInitialized", FirstLoadSinceStartup);
 		}
-		public ModPackage RemovePlugin(RustPlugin plugin)
+
+		FirstLoadSinceStartup = false;
+
+		Facepunch.Pool.FreeUnmanaged(ref plugins);
+
+		if (counter > 1)
 		{
-			if (!IsValid || Plugins == null || !Plugins.Contains(plugin))
-			{
-				return this;
-			}
+			Analytics.batch_plugin_types();
 
-			Plugins.Remove(plugin);
-			return this;
+			Logger.Log($" Batch completed! OSI on {counter:n0} {counter.Plural("plugin", "plugins")}.");
 		}
 
-		public static ModPackage Get(string name, bool isCoreMod, string file = null)
-		{
-			ModPackage package = default;
-
-			package.Name = name;
-			package.File = file;
-			package.IsCoreMod = isCoreMod;
-			package.Plugins = new();
-			package.IsValid = true;
-
-			return package;
-		}
-	}
-
-	[JsonObject(MemberSerialization.OptIn)]
-	public class FailedCompilation
-	{
-		[JsonProperty] public string File;
-		[JsonProperty] public List<Trace> Errors = new();
-		[JsonProperty] public List<Trace> Warnings = new();
-		public Type RollbackType;
-
-		public void AppendErrors(IEnumerable<Trace> traces)
-		{
-			Errors.AddRange(traces);
-		}
-		public void AppendWarnings(IEnumerable<Trace> traces)
-		{
-			Warnings.AddRange(traces);
-		}
-
-		public void SetRollbackType(Type type)
-		{
-			RollbackType = type;
-		}
-		public void LoadRollbackType()
-		{
-			if (RollbackType == null)
-			{
-				return;
-			}
-
-			var existentPlugin = FindPlugin(GetRollbackTypeName());
-
-			if (existentPlugin != null)
-			{
-				return;
-			}
-
-			InitializePlugin(RollbackType, out var plugin, Community.Runtime.Plugins, plugin =>
-			{
-				Logger.Warn($"Rollback for plugin '{plugin.ToPrettyString()}' due to compilation failure");
-			}, precompiled: true);
-			plugin.InternalCallHookOverriden = true;
-			plugin.IsPrecompiled = false;
-		}
-
-		public string GetRollbackTypeName()
-		{
-			if (RollbackType == null)
-			{
-				return string.Empty;
-			}
-
-			return  RollbackType.GetCustomAttribute<InfoAttribute>()?.Title?.Replace(" ", string.Empty);
-		}
-
-		public bool IsValid()
-		{
-			return Errors != null && Errors.Count > 0;
-		}
-		public void Clear()
-		{
-			Errors?.Clear();
-			Warnings?.Clear();
-		}
-	}
-
-	[JsonObject(MemberSerialization.OptIn)]
-	public struct Trace
-	{
-		[JsonProperty] public string Number;
-		[JsonProperty] public string Message;
-		[JsonProperty] public int Column;
-		[JsonProperty] public int Line;
+		Community.Runtime.Events.Trigger(CarbonEvent.AllPluginsLoaded, EventArgs.Empty);
 	}
 }

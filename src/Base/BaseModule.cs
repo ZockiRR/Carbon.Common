@@ -1,12 +1,6 @@
 ﻿using Carbon.Base.Interfaces;
 using Defines = Carbon.Core.Defines;
-
-/*
- *
- * Copyright (c) 2022-2024 Carbon Community
- * All rights reserved.
- *
- */
+using Harmony = HarmonyLib.Harmony;
 
 namespace Carbon.Base;
 
@@ -19,6 +13,9 @@ public abstract class BaseModule : BaseHookable
 	public virtual bool ForceEnabled => false;
 	public virtual bool ForceDisabled => false;
 
+	public virtual bool ManualCommands => false;
+	public virtual bool ConfigVersionChecks => true;
+
 	public abstract void OnServerInit(bool initial);
 	public abstract void OnPostServerInit(bool initial);
 	public abstract void OnServerSaved();
@@ -26,7 +23,7 @@ public abstract class BaseModule : BaseHookable
 	public abstract void Save();
 	public abstract void OnUnload();
 	public abstract void Reload();
-	public abstract bool GetEnabled();
+	public abstract bool IsEnabled();
 	public abstract void SetEnabled(bool enable);
 	public abstract void Shutdown();
 
@@ -41,12 +38,12 @@ public abstract class BaseModule : BaseHookable
 	}
 	public static BaseModule FindModule(string name)
 	{
-		return Community.Runtime.ModuleProcessor.Modules.FirstOrDefault(x => x.Type.Name == name) as BaseModule;
+		return Community.Runtime.ModuleProcessor.Modules.FirstOrDefault(x => x.Name.Equals(name, StringComparison.InvariantCultureIgnoreCase) || x.Name.Contains(name, CompareOptions.OrdinalIgnoreCase)) as BaseModule;
 	}
 }
 
-public class EmptyModuleConfig { }
-public class EmptyModuleData { }
+public class EmptyModuleConfig;
+public class EmptyModuleData;
 
 public abstract class CarbonModule<C, D> : BaseModule, IModule
 {
@@ -55,7 +52,7 @@ public abstract class CarbonModule<C, D> : BaseModule, IModule
 	public DynamicConfigFile Data { get; private set; }
 	public Lang Lang { get; private set; }
 
-	public new virtual Type Type => default;
+	public virtual Type Type => default;
 
 	public D DataInstance { get; private set; }
 	public C ConfigInstance { get; private set; }
@@ -63,12 +60,9 @@ public abstract class CarbonModule<C, D> : BaseModule, IModule
 	public new virtual string Name => "Not set";
 	public Permission Permissions;
 
-	protected void Puts(object message)
-		=> Logger.Log($"[{Name}] {message}");
-	protected void PutsError(object message, Exception ex = null)
-		=> Logger.Error($"[{Name}] {message}", ex);
-	protected void PutsWarn(object message)
-		=> Logger.Warn($"[{Name}] {message}");
+	protected void Puts(object message) => Logger.Log($"[{Name}] {message}");
+	protected void PutsError(object message, Exception ex = null) => Logger.Error($"[{Name}] {message}", ex);
+	protected void PutsWarn(object message) => Logger.Warn($"[{Name}] {message}");
 
 	public virtual void Dispose()
 	{
@@ -80,9 +74,12 @@ public abstract class CarbonModule<C, D> : BaseModule, IModule
 	{
 		base.Hooks ??= new();
 		base.Name ??= Name;
-		base.Type ??= Type;
+		base.HookableType ??= Type;
 
-		if (ForceDisabled) return;
+		if (ForceDisabled)
+		{
+			return;
+		}
 
 		Permissions = Interface.Oxide.Permission;
 
@@ -90,7 +87,10 @@ public abstract class CarbonModule<C, D> : BaseModule, IModule
 	}
 	public virtual bool InitEnd()
 	{
-		if (ForceDisabled || HasInitialized) return false;
+		if (ForceDisabled || HasInitialized)
+		{
+			return false;
+		}
 
 		Community.Runtime.HookManager.LoadHooksFromType(Type);
 
@@ -103,7 +103,11 @@ public abstract class CarbonModule<C, D> : BaseModule, IModule
 				Community.Runtime.HookManager.Subscribe(method.Name, Name);
 
 				var hash = HookStringPool.GetOrAdd(method.Name);
-				if (!Hooks.Contains(hash)) Hooks.Add(hash);
+
+				if (!Hooks.Contains(hash))
+				{
+					Hooks.Add(hash);
+				}
 			}
 		}
 
@@ -122,6 +126,7 @@ public abstract class CarbonModule<C, D> : BaseModule, IModule
 
 		return true;
 	}
+
 	public override void Load()
 	{
 		if (ForceDisabled) return;
@@ -130,7 +135,7 @@ public abstract class CarbonModule<C, D> : BaseModule, IModule
 
 		Config ??= new DynamicConfigFile(GetConfigPath());
 		Data ??= new DynamicConfigFile(GetDataPath());
-		Lang ??= new(this);
+		Lang ??= new Lang(this);
 
 		var newConfig = !Config.Exists();
 		var newData = !Data.Exists();
@@ -146,6 +151,7 @@ public abstract class CarbonModule<C, D> : BaseModule, IModule
 			{
 				ModuleConfiguration.Enabled = true;
 			}
+
 			shouldSave = true;
 		}
 		else
@@ -154,7 +160,7 @@ public abstract class CarbonModule<C, D> : BaseModule, IModule
 			{
 				ModuleConfiguration = Config.ReadObject<Configuration>();
 
-				if (ModuleConfiguration.HasConfigStructureChanged())
+				if (ConfigVersionChecks && ModuleConfiguration.HasConfigStructureChanged())
 				{
 					shouldSave = true;
 				}
@@ -166,7 +172,11 @@ public abstract class CarbonModule<C, D> : BaseModule, IModule
 		}
 
 		ConfigInstance = ModuleConfiguration.Config;
-		if (ForceEnabled) ModuleConfiguration.Enabled = true;
+
+		if (ForceEnabled)
+		{
+			ModuleConfiguration.Enabled = true;
+		}
 
 		if (typeof(D) != typeof(EmptyModuleData))
 		{
@@ -188,13 +198,15 @@ public abstract class CarbonModule<C, D> : BaseModule, IModule
 			}
 		}
 
-		if (PreLoadShouldSave(newConfig, newData)) shouldSave = true;
+		if (PreLoadShouldSave(newConfig, newData))
+		{
+			shouldSave = true;
+		}
 
-		if (shouldSave) Save();
-	}
-	public virtual bool PreLoadShouldSave(bool newConfig, bool newData)
-	{
-		return false;
+		if (shouldSave)
+		{
+			Save();
+		}
 	}
 	public override void Save()
 	{
@@ -260,6 +272,11 @@ public abstract class CarbonModule<C, D> : BaseModule, IModule
 		}
 	}
 
+	public virtual bool PreLoadShouldSave(bool newConfig, bool newData)
+	{
+		return false;
+	}
+
 	public virtual string GetConfigPath()
 	{
 		return Path.Combine(Defines.GetModulesFolder(), Name, "config.json");
@@ -300,21 +317,14 @@ public abstract class CarbonModule<C, D> : BaseModule, IModule
 			}
 		}
 	}
-	public override bool GetEnabled()
+	public override bool IsEnabled()
 	{
-		return !ForceDisabled && ModuleConfiguration != null && ModuleConfiguration.Enabled;
+		return !ForceDisabled && ModuleConfiguration is { Enabled: true };
 	}
 
 	public virtual void OnDisabled(bool initialized)
 	{
 		if (ForceDisabled) return;
-
-		if (initialized) ModLoader.RemoveCommands(this);
-
-		UnsubscribeAll();
-		Permissions.UnregisterPermissions(this);
-
-		if (Hooks.Count > 0) Puts($"Unsubscribed from {Hooks.Count:n0} {Hooks.Count.Plural("hook", "hooks")}.");
 
 		OnUnload();
 	}
@@ -322,22 +332,22 @@ public abstract class CarbonModule<C, D> : BaseModule, IModule
 	{
 		if (ForceDisabled) return;
 
-		if (initialized)
+		if (!ManualCommands)
 		{
 			ModLoader.ProcessCommands(Type, this, flags: BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
 		}
 
-		SubscribeAll();
-
-		if (Hooks.Count > 0)
+		if (!ManualSubscriptions)
 		{
-			Puts($"Subscribed to {Hooks.Count:n0} {Hooks.Count.Plural("hook", "hooks")}.");
+			SubscribeAll();
+
+			if (Hooks.Count > 0)
+			{
+				Puts($"Subscribed to {Hooks.Count:n0} {Hooks.Count.Plural("hook", "hooks")}.");
+			}
 		}
 
-		if (InitEnd() && initialized)
-		{
-			OnServerInit(true);
-		}
+		DoHarmonyPatch();
 	}
 
 	public void OnEnableStatus()
@@ -361,12 +371,6 @@ public abstract class CarbonModule<C, D> : BaseModule, IModule
 
 	public override void OnServerInit(bool initial)
 	{
-		if (ForceDisabled) return;
-
-		if (initial && GetEnabled())
-		{
-			OnEnableStatus();
-		}
 	}
 	public override void OnPostServerInit(bool initial)
 	{
@@ -374,15 +378,96 @@ public abstract class CarbonModule<C, D> : BaseModule, IModule
 	}
 	public override void OnUnload()
 	{
+		ModLoader.RemoveCommands(this);
 
+		UnsubscribeAll();
+		Permissions?.UnregisterPermissions(this);
+
+		if (Hooks.Count > 0)
+		{
+			Puts($"Unsubscribed from {Hooks.Count:n0} {Hooks.Count.Plural("hook", "hooks")}.");
+		}
+
+		DoHarmonyUnpatch();
 	}
 	public override void Shutdown()
 	{
-		Save();
 		OnUnload();
 
 		Community.Runtime.ModuleProcessor.Uninstall(this);
 	}
+
+	#region Harmony
+
+	public Harmony HarmonyInstance;
+
+	public virtual string HarmonyDomain => $"com.carbon-module.{Name}".Replace(" ", string.Empty).ToLower();
+
+	public virtual bool AutoPatch => false;
+
+	public virtual void DoHarmonyPatch()
+	{
+		if (!AutoPatch)
+		{
+			return;
+		}
+
+		if (HarmonyInstance == null)
+		{
+			HarmonyInstance = new(HarmonyDomain);
+		}
+
+		foreach (var type in Type.GetNestedTypes(BindingFlags.DeclaredOnly | BindingFlags.Public |
+		                                         BindingFlags.NonPublic | BindingFlags.Static))
+		{
+			try
+			{
+				var harmonyMethods = HarmonyInstance.CreateClassProcessor(type)?.Patch();
+
+				if (harmonyMethods == null || harmonyMethods.Count == 0)
+				{
+					continue;
+				}
+
+				foreach (MethodInfo method in harmonyMethods)
+				{
+					Logger.Warn($"[{HarmonyDomain}] Patched '{method.Name}' method. ({type.Name})");
+				}
+			}
+			catch (Exception ex)
+			{
+				Logger.Error($"[{HarmonyDomain}] Failed to patch '{type.Name}'", ex);
+			}
+		}
+	}
+
+	public virtual void DoHarmonyUnpatch()
+	{
+		if (!AutoPatch)
+		{
+			return;
+		}
+
+		try
+		{
+			if (HarmonyInstance != null)
+			{
+				foreach (var method in HarmonyInstance.GetPatchedMethods())
+				{
+					Logger.Warn($"[{HarmonyDomain}] Unpatched '{method.Name}' method. ({method.DeclaringType.Name})");
+				}
+			}
+
+			HarmonyInstance?.UnpatchAll(HarmonyDomain);
+			HarmonyInstance = null;
+		}
+		catch (Exception ex)
+		{
+			Logger.Error($"[{HarmonyDomain}] Failed unpatching for {ToPrettyString()}", ex);
+		}
+	}
+
+	#endregion
 
 	#region Localisation
 
@@ -405,7 +490,7 @@ public abstract class CarbonModule<C, D> : BaseModule, IModule
 
 	public void NextFrame(Action callback)
 	{
-		Community.Runtime.CorePlugin.NextFrame(callback);
+		Community.Runtime.Core.NextFrame(callback);
 	}
 
 	public class Configuration : IModuleConfig

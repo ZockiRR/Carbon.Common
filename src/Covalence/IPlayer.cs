@@ -1,11 +1,4 @@
-﻿/*
- *
- * Copyright (c) 2022-2023 Carbon Community
- * All rights reserved.
- *
- */
-
-namespace Oxide.Core.Libraries.Covalence;
+﻿namespace Oxide.Core.Libraries.Covalence;
 
 public interface IPlayer
 {
@@ -20,7 +13,7 @@ public interface IPlayer
 	float Health { get; set; }
 	float MaxHealth { get; set; }
 	int Ping { get; }
-	object Object { get; set; }
+	object Object { get; }
 	string Address { get; }
 	string Id { get; }
 	string Name { get; set; }

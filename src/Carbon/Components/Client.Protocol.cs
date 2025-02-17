@@ -2,6 +2,6 @@
 {
 	public class Protocol
 	{
-		public const int VERSION = 104;
+		public const int VERSION = 1024;
 	}
 }

@@ -1,12 +1,4 @@
-﻿using Facepunch;
-using Logger = Carbon.Logger;
-
-/*
- *
- * Copyright (c) 2022-2023 Carbon Community
- * All rights reserved.
- *
- */
+﻿using Logger = Carbon.Logger;
 
 namespace Oxide.Plugins;
 
@@ -45,7 +37,10 @@ public class Timers : Library
 
 	public Timer In(float time, Action action)
 	{
-		if (!IsValid()) return null;
+		if (!IsValid())
+		{
+			return null;
+		}
 
 		var timer = new Timer(Persistence, action, Plugin);
 		var activity = new Action(() =>
@@ -57,10 +52,8 @@ public class Timers : Library
 			}
 			catch (Exception ex)
 			{
-				if (Plugin is RustPlugin rustPlugin)
-				{
-					rustPlugin.LogError($"Timer {time}s has failed:", ex);
-				}
+				Logger.Error($"Timer of {time}s has failed in '{Plugin.ToPrettyString()}' [callback]", ex);
+				timer.Destroy();
 			}
 		});
 
@@ -80,7 +73,10 @@ public class Timers : Library
 	}
 	public Timer Every(float time, Action action)
 	{
-		if (!IsValid()) return null;
+		if (!IsValid())
+		{
+			return null;
+		}
 
 		var timer = new Timer(Persistence, action, Plugin);
 		var activity = new Action(() =>
@@ -92,13 +88,8 @@ public class Timers : Library
 			}
 			catch (Exception ex)
 			{
-				if (Plugin is RustPlugin rustPlugin)
-				{
-					rustPlugin.LogError($"Timer {time}s has failed:", ex);
-				}
-
+				Logger.Error($"Timer of {time}s has failed in '{Plugin.ToPrettyString()}' [callback]", ex);
 				timer.Destroy();
-				Pool.Free(ref timer);
 			}
 		});
 
@@ -118,24 +109,15 @@ public class Timers : Library
 				action?.Invoke();
 				timer.TimesTriggered++;
 
-				if (times != 0 && timer.TimesTriggered >= times)
-				{
-					if (Persistence != null)
-					{
-						Persistence.CancelInvoke(timer.Callback);
-						Persistence.CancelInvokeFixedTime(timer.Callback);
-					}
-				}
+				if (times == 0 || timer.TimesTriggered < times) return;
+				if (Persistence == null) return;
+				Persistence.CancelInvoke(timer.Callback);
+				Persistence.CancelInvokeFixedTime(timer.Callback);
 			}
 			catch (Exception ex)
 			{
-				if (Plugin is RustPlugin rustPlugin)
-				{
-					rustPlugin.LogError($"Timer {time}s has failed:", ex);
-				}
-
+				Logger.Error($"Timer of {time}s has failed in '{Plugin.ToPrettyString()}' [callback]", ex);
 				timer.Destroy();
-				Pool.Free(ref timer);
 			}
 		});
 
@@ -164,7 +146,7 @@ public class Timers : Library
 	}
 }
 
-public class Timer : Library, IDisposable
+public class Timer : IDisposable
 {
 	public Plugin Plugin { get; set; }
 
@@ -204,7 +186,7 @@ public class Timer : Library, IDisposable
 
 		if (Repetitions == 1)
 		{
-			Callback = new Action(() =>
+			Callback = () =>
 			{
 				try
 				{
@@ -213,20 +195,17 @@ public class Timer : Library, IDisposable
 				}
 				catch (Exception ex)
 				{
-					if (Plugin is RustPlugin rustPlugin)
-					{
-						rustPlugin.LogError($"Timer {delay}s has failed:", ex);
-					}
+					Logger.Error($"Timer of {delay}s has failed in '{Plugin.ToPrettyString()}' [callback]", ex);
 				}
 
 				Destroy();
-			});
+			};
 
 			Persistence.Invoke(Callback, delay);
 		}
 		else
 		{
-			Callback = new Action(() =>
+			Callback = () =>
 			{
 				try
 				{
@@ -240,14 +219,10 @@ public class Timer : Library, IDisposable
 				}
 				catch (Exception ex)
 				{
-					if (Plugin is RustPlugin rustPlugin)
-					{
-						rustPlugin.LogError($"Timer {delay}s has failed:", ex);
-					}
-
+					Logger.Error($"Timer of {delay}s has failed in '{Plugin.ToPrettyString()}' [callback]", ex);
 					Destroy();
 				}
-			});
+			};
 
 			Persistence.InvokeRepeating(Callback, delay, delay);
 		}
@@ -260,7 +235,6 @@ public class Timer : Library, IDisposable
 		if (Persistence != null)
 		{
 			Persistence.CancelInvoke(Callback);
-			Persistence.CancelInvokeFixedTime(Callback);
 		}
 
 		if (Callback != null)
@@ -274,10 +248,8 @@ public class Timer : Library, IDisposable
 	{
 		Destroy();
 	}
-	public override void Dispose()
+	public void Dispose()
 	{
 		Destroy();
-
-		base.Dispose();
 	}
 }

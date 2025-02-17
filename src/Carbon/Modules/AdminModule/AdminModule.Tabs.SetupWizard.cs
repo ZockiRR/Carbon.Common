@@ -1,12 +1,5 @@
 ﻿#if !MINIMAL
 
-/*
- *
- * Copyright (c) 2022-2023 Carbon Community
- * All rights reserved.
- *
- */
-
 using API.Commands;
 using Newtonsoft.Json;
 using Oxide.Game.Rust.Cui;
@@ -25,7 +18,7 @@ public partial class AdminModule
 
 		public static SetupWizard Make()
 		{
-			var tab = new SetupWizard("setupwizard", "Setup Wizard", Community.Runtime.CorePlugin) { IsFullscreen = true };
+			var tab = new SetupWizard("setupwizard", "Setup Wizard", Community.Runtime.Core) { IsFullscreen = true };
 			tab.Override = tab.Draw;
 
 			tab.Pages.Add(new Page("Main", (cui, t, container, panel, ap) =>
@@ -71,7 +64,7 @@ public partial class AdminModule
 				tab.ModuleInfoTemplate(cui, t, container, panel, ap,
 					"Gather Manager Module",
 					"The module allows you to modify the processing modifiers of Quarries, Excavators, Pickup and Gather amounts, globally set or item-specific. This module comes with a variety of useful tools, including custom recycler speed.",
-					"", FindModule("GatherManagerModule"));
+					"", FindModule("GatherManager"));
 			}));
 			tab.Pages.Add(new Page("Stack Manager", (cui, t, container, panel, ap) =>
 			{
@@ -80,31 +73,32 @@ public partial class AdminModule
 					"High performance will allow to set custom item stacks based on:\n" +
 					"\n• Item name" +
 					"\n• Item category" +
-					"\n• Blacklisted items (useful when using categories)", "", FindModule("StackManagerModule"));
+					"\n• Blacklisted items (useful when using categories)", "", FindModule("StackManager"));
 			}));
 			tab.Pages.Add(new Page("Vanish", (cui, t, container, panel, ap) =>
 			{
 				tab.ModuleInfoTemplate(cui, t, container, panel, ap,
 					"Vanish Module",
-					"A very lightweight auth-level based system allowing you to become invisible, with various settings in the config file.", "", FindModule("VanishModule"));
+					"A very lightweight auth-level based system allowing you to become invisible, with various settings in the config file.", "", FindModule("Vanish"));
 			}));
 			tab.Pages.Add(new Page("Moderation Tools", (cui, t, container, panel, ap) =>
 			{
 				tab.ModuleInfoTemplate(cui, t, container, panel, ap,
 					"Moderation Tools Module",
 					"This module is a bundle of very helpful and often usable moderation tools that can grant the ability to players with regular authority level to use noclip and god-mode and nothing else (use the 'carbon.admin' permission to allow the use of the '/cadmin' command).\n" +
-					"There's also a permission ('carbon.cmod') that allows players to kick, ban or mute players with defined reasons.", "", FindModule("ModerationToolsModule"));
+					"There's also a permission ('carbon.cmod') that allows players to kick, ban or mute players with defined reasons.", "", FindModule("ModerationTools"));
 			}));
-			tab.Pages.Add(new Page("Optimisations", (cui, t, container, panel, ap) =>
+			tab.Pages.Add(new Page("Circular Networking", (cui, t, container, panel, ap) =>
 			{
 				tab.ModuleInfoTemplate(cui, t, container, panel, ap,
-					"Optimisations Module",
-					"A Carbon built-in version of the Circular Network Distance from Codefling.", "", FindModule("OptimisationsModule"));
+					"Circular Networking Module",
+					"This module modifies Rust's network system to use a more performant circular version. Using this on maximum settings with lower network distance offers an extreme performance boost over vanilla settings, and it has allowed huge server networks to push an extra 100 server pop on wipe with minimal lag.\n" +
+					"It's not a catch-all solution, but it works well for network lag with almost no downside.", "", FindModule("CircularNetworking"));
 
 			}));
 			tab.Pages.Add(new Page("Plugin Browser", (cui, t, container, panel, ap) =>
 			{
-				cui.CreateClientImage(container, panel, null, "https://i.imgur.com/mFxaU99.png", "1 1 1 0.7",
+				cui.CreateClientImage(container, panel, "https://carbonmod.gg/assets/media/cui/wizard/pluginstab_sample.jpg", "1 1 1 0.7",
 					xMin: 0.35f, xMax: 0.65f, yMin: 0.1f, yMax: 0.425f, fadeIn: 1f);
 
 				var cfPaidPluginCount = PluginsTab.CodeflingInstance?.FetchedPlugins.Count(x => x.IsPaid());
@@ -127,7 +121,7 @@ public partial class AdminModule
 				tab.ModuleInfoTemplate(cui, t, container, panel, ap,
 					"Whitelist Module",
 					"A very basic system that only grants players access to a server based on the 'whitelist.bypass' permission or 'whitelisted' group.", "",
-					FindModule("WhitelistModule"));
+					FindModule("Whitelist"));
 			}));
 
 			tab.Pages.Add(new Page("Finalize", (cui, t, container, panel, ap) =>
@@ -136,7 +130,7 @@ public partial class AdminModule
 
 				Singleton.DataInstance.WizardDisplayed = true;
 				Singleton.GenerateTabs();
-				Community.Runtime.CorePlugin.NextTick(() => Singleton.SetTab(ap.Player, 0));
+				Community.Runtime.Core.NextTick(() => Singleton.SetTab(ap.Player, 0));
 			}));
 
 			return tab;
@@ -184,13 +178,13 @@ public partial class AdminModule
 			InfoTemplate(cui, tab, container, panel, player, title, content, hint);
 
 			cui.CreateProtectedButton(container, panel, "0.3 0.3 0.3 0.5", "1 1 1 1", "OPEN FOLDER".SpacedString(1), 10,
-				xMin: 0.9f, yMin: 0.075f, yMax: 0.125f, OyMin: 60, OyMax: 60, OxMin: 8, OxMax: 8, command: $"wizard.openmodulefolder {module.Type.Name}");
+				xMin: 0.9f, yMin: 0.075f, yMax: 0.125f, OyMin: 60, OyMax: 60, OxMin: 8, OxMax: 8, command: $"wizard.openmodulefolder {module.Name}");
 
 			cui.CreateProtectedButton(container, panel, "0.3 0.3 0.3 0.5", "1 1 1 1", "EDIT CONFIG".SpacedString(1), 10,
-				xMin: 0.9f, yMin: 0.075f, yMax: 0.125f, OyMin: 30, OyMax: 30, OxMin: 8, OxMax: 8, command: $"wizard.editmoduleconfig {module.Type.Name}");
+				xMin: 0.9f, yMin: 0.075f, yMax: 0.125f, OyMin: 30, OyMax: 30, OxMin: 8, OxMax: 8, command: $"wizard.editmoduleconfig {module.Name}");
 
-			cui.CreateProtectedButton(container, panel, module.GetEnabled() ? "0.4 0.9 0.3 0.5" : "0.1 0.1 0.1 0.5", "1 1 1 1", module.GetEnabled() ? "ENABLED".SpacedString(1) : "DISABLED".SpacedString(1), 10,
-				xMin: 0.9f, yMin: 0.075f, yMax: 0.125f, OxMin: 8, OxMax: 8, command: $"wizard.togglemodule {module.Type.Name}");
+			cui.CreateProtectedButton(container, panel, module.IsEnabled() ? "0.4 0.9 0.3 0.5" : "0.1 0.1 0.1 0.5", "1 1 1 1", module.IsEnabled() ? "ENABLED".SpacedString(1) : "DISABLED".SpacedString(1), 10,
+				xMin: 0.9f, yMin: 0.075f, yMax: 0.125f, OxMin: 8, OxMax: 8, command: $"wizard.togglemodule {module.Name}");
 		}
 		internal void InternalFeatureInfoTemplate(CUI cui, Tab tab, CuiElementContainer container, string panel, PlayerSession player, string title, string content, string hint, string feature)
 		{
@@ -233,16 +227,13 @@ public partial class AdminModule
 
 		internal static string Header(string value, int level)
 		{
-			switch (level)
+			return level switch
 			{
-				case 1: return $"<size=20>{value}</size>";
-				case 2: return $"<size=17>{value}</size>";
-				case 3: return $"<size=14>{value}</size>";
-				default:
-					break;
-			}
-
-			return value;
+				1 => $"<size=20>{value}</size>",
+				2 => $"<size=17>{value}</size>",
+				3 => $"<size=14>{value}</size>",
+				_ => value
+			};
 		}
 
 		internal bool IsFeatureEnabled(string feature)
@@ -286,7 +277,7 @@ public partial class AdminModule
 			ap.SetStorage(tab, "page", 0);
 			Singleton.DataInstance.WizardDisplayed = true;
 			Singleton.GenerateTabs();
-			Community.Runtime.CorePlugin.NextTick(() =>
+			Community.Runtime.Core.NextTick(() =>
 			{
 				Save();
 				Singleton.SetTab(ap.Player, 0);
@@ -297,9 +288,8 @@ public partial class AdminModule
 		{
 			currentPage += value;
 			ap.SetStorage(tab, "page", currentPage);
-			Community.Runtime.CorePlugin.NextFrame(() => Draw(ap.Player));
+			Community.Runtime.Core.NextFrame(() => Draw(ap.Player));
 		}
-
 	}
 
 	[Conditional("!MINIMAL")]
@@ -308,7 +298,7 @@ public partial class AdminModule
 	{
 		var ap = GetPlayerSession(arg.Player());
 		var module = FindModule(arg.GetString(0));
-		var enabled = module.GetEnabled();
+		var enabled = module.IsEnabled();
 
 		module.SetEnabled(!enabled);
 
@@ -352,7 +342,7 @@ public partial class AdminModule
 				module.Load();
 				SetTab(ap.Player, SetupWizard.Make());
 				Draw(ap.Player);
-			}, null);
+			}, null, fullscreen: true);
 
 		Draw(ap.Player);
 	}

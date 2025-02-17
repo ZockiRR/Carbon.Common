@@ -1,22 +1,16 @@
 ﻿#if !MINIMAL
 
-/*
-*
- * Copyright (c) 2022-2023 Carbon Community
- * All rights reserved.
- *
- */
-
 using System.Text;
 using Facepunch;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.Text;
+using ProtoBuf;
 using UnityEngine.UI;
 
 namespace Carbon.Modules;
 
-public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
+public partial class AdminModule
 {
 	public class SourceViewerTab : Tab
 	{
@@ -28,7 +22,7 @@ public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
 
 		public static SourceViewerTab Make(string fileName, string content, string context, int size = 8)
 		{
-			var tab = new SourceViewerTab("testchat", "TestChat", Community.Runtime.CorePlugin);
+			var tab = new SourceViewerTab("sourceviewer", "Source Viewer", Community.Runtime.Core);
 			tab.OnChange += (_, tab1) =>
 			{
 				tab1.AddColumn(0, true);
@@ -37,10 +31,10 @@ public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
 			{
 				var blur = cui.CreatePanel(container, panel, "0.1 0.1 0.1 0.8", blur: true);
 
-				using var lines = TemporaryArray<string>.New(content.Split('\n'));
-				var temp = Pool.GetList<string>();
+				using var lines = TempArray<string>.New(content.Split('\n'));
+				var temp = Pool.Get<List<string>>();
 
-				var resultContent = lines.Array.ToString("\n");
+				var resultContent = lines.array.ToString("\n");
 
 				for (int i = 0; i < lines.Length; i++) temp.Add($"{i + 1}");
 
@@ -64,7 +58,7 @@ public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
 				var scrollview = cui.CreateScrollView(container, blur,
 					vertical: true, horizontal: true, movementType: ScrollRect.MovementType.Clamped, elasticity: 0.5f,
 					inertia: true, decelerationRate: 0.2f, scrollSensitivity: 75, maskSoftness: "0 0",
-					contentTransform: out var contentTransform, verticalScrollBar: out var verticalScroll,
+					contentTransformComponent: out var contentTransform, verticalScrollBar: out var verticalScroll,
 					horizontalScrollBar: out var horizontalScroll,
 					yMax: 0.96f);
 
@@ -72,7 +66,7 @@ public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
 				cui.CreatePanel(container, scrollview, "0.2 0.2 0.2 1", xMin: 0, xMax: 0, OxMin: 29, OxMax: 30);
 				cui.CreatePanel(container, blur, "0.2 0.2 0.2 1", xMin: 0, xMax: 0, OxMin: 29, OxMax: 30, yMin: 0.96f);
 
-				var longestLine = lines.Array.Max(x => x.Length);
+				var longestLine = lines.array.Max(x => x.Length);
 				var height = -(11.2f * lines.Length.Clamp(45, int.MaxValue));
 				var width = 2.75f * longestLine.Clamp(547, int.MaxValue);
 
@@ -83,6 +77,7 @@ public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
 				verticalScroll.Size = 2;
 				horizontalScroll.Size = 2;
 				horizontalScroll.AutoHide = false;
+				horizontalScroll.Invert = true;
 
 				cui.CreateText(container, scrollview, "0.3 0.7 0.9 0.5",
 					string.Join("\n", temp), size,
@@ -97,7 +92,7 @@ public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
 					align: TextAnchor.UpperLeft, font: CUI.Handler.FontTypes.DroidSansMono,
 					xMin: 0, xMax: 0, yMin: 1f, yMax: 1f, OxMin: 40, OxMax: 40 + width, OyMax: -7.5f, OyMin: height);
 
-				Pool.FreeList(ref temp);
+				Pool.FreeUnmanaged(ref temp);
 			};
 
 			return tab;
@@ -111,13 +106,12 @@ public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
 		}
 		public unsafe static SourceViewerTab MakeMethod(MonoProfiler.CallRecord call, int size = 8)
 		{
-			var assemblyName = MonoProfiler.AssemblyMap[call.assembly_handle];
-			var code = SourceCodeBank.Parse(assemblyName.name, call.assembly_handle);
+			var code = SourceCodeBank.Parse(call.assembly_name.name, call.assembly_handle);
 			var codeResult = code.ParseMethod(call.method_handle, out var type, out var method).Trim();
 
 			return Make(
 				$"<color=#878787>{type}.</color>{method}",
-				ProcessSyntaxHighlight(codeResult), assemblyName.displayName, size);
+				ProcessSyntaxHighlight(codeResult), call.assembly_name.GetDisplayName(true), size);
 		}
 
 		public static string ProcessSyntaxHighlight(string content)

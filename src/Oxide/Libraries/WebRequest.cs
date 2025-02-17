@@ -1,18 +1,10 @@
 ﻿using System.Net;
 using System.Text;
-using Facepunch;
 using Logger = Carbon.Logger;
 
-/*
- *
- * Copyright (c) 2022-2023 Carbon Community
- * All rights reserved.
- *
- */
+namespace Oxide.Core.Libraries;
 
 #pragma warning disable CS4014
-
-namespace Oxide.Core.Libraries;
 
 public enum RequestMethod
 {
@@ -218,10 +210,7 @@ public class WebRequests : Library
 
 									if (e.Error != null)
 									{
-										if (e.Error is WebException web)
-											ResponseCode = (int)(web.Response as HttpWebResponse).StatusCode;
 										ResponseError = e.Error;
-										ResponseObject = e.Result;
 										Logger.Error($"Failed executing '{Method}' webrequest [response] ({Url})", e.Error);
 										OnComplete();
 										return;
@@ -232,7 +221,7 @@ public class WebRequests : Library
 								}
 								catch (Exception ex)
 								{
-									Logger.Error($"Failed executing '{Method}' webrequest [callback] ({Url})", ex);
+									Logger.Error($"Failed executing '{Method}' webrequest [internal] ({Url})", ex);
 									OnComplete();
 								}
 							};
@@ -255,10 +244,7 @@ public class WebRequests : Library
 
 									if (e.Error != null)
 									{
-										if (e.Error is WebException web)
-											ResponseCode = (int)(web.Response as HttpWebResponse).StatusCode;
 										ResponseError = e.Error;
-										ResponseObject = e.Result;
 										Logger.Error($"Failed executing '{Method}' webrequest [response] ({Url})", e.Error);
 										OnComplete();
 										return;
@@ -269,7 +255,7 @@ public class WebRequests : Library
 								}
 								catch (Exception ex)
 								{
-									Logger.Error($"Failed executing '{Method}' webrequest [callback] ({Url})", ex);
+									Logger.Error($"Failed executing '{Method}' webrequest [internal] ({Url})", ex);
 									OnComplete();
 								}
 							};
@@ -311,10 +297,7 @@ public class WebRequests : Library
 
 									if (e.Error != null)
 									{
-										if (e.Error is WebException web)
-											ResponseCode = (int)(web.Response as HttpWebResponse).StatusCode;
 										ResponseError = e.Error;
-										ResponseObject = e.Result;
 										Logger.Error($"Failed executing '{Method}' webrequest [response] ({Url})", e.Error);
 										OnComplete();
 										return;
@@ -325,7 +308,7 @@ public class WebRequests : Library
 								}
 								catch (Exception ex)
 								{
-									Logger.Error($"Failed executing '{Method}' webrequest [callback] ({Url})", ex);
+									Logger.Error($"Failed executing '{Method}' webrequest [internal] ({Url})", ex);
 									OnComplete();
 								}
 							};
@@ -348,10 +331,7 @@ public class WebRequests : Library
 
 									if (e.Error != null)
 									{
-										if (e.Error is WebException web)
-											ResponseCode = (int)(web.Response as HttpWebResponse).StatusCode;
 										ResponseError = e.Error;
-										ResponseObject = e.Result;
 										Logger.Error($"Failed executing '{Method}' webrequest [response] ({Url})", e.Error);
 										OnComplete();
 										return;
@@ -362,7 +342,7 @@ public class WebRequests : Library
 								}
 								catch (Exception ex)
 								{
-									Logger.Error($"Failed executing '{Method}' webrequest [callback] ({Url})", ex);
+									Logger.Error($"Failed executing '{Method}' webrequest [internal] ({Url})", ex);
 									OnComplete();
 								}
 							};
@@ -434,17 +414,52 @@ public class WebRequests : Library
 
 			protected override WebResponse GetWebResponse(System.Net.WebRequest request, IAsyncResult result)
 			{
-				var response = base.GetWebResponse(request, result);
+				WebResponse response = null;
 
-				StatusCode = (int)(request.GetResponse() as HttpWebResponse).StatusCode;
+				try
+				{
+					response = base.GetWebResponse(request, result);
+
+					if (response is HttpWebResponse httpResponse)
+					{
+						StatusCode = (int)httpResponse.StatusCode;
+					}
+				}
+				catch (WebException exp)
+				{
+					response = exp.Response;
+
+					if (response is HttpWebResponse httpResponse)
+					{
+						StatusCode = (int)httpResponse.StatusCode;
+					}
+				}
 
 				return response;
 			}
+
 			protected override WebResponse GetWebResponse(System.Net.WebRequest request)
 			{
-				var response = base.GetWebResponse(request);
+				WebResponse response = null;
 
-				StatusCode = (int)(request.GetResponse() as HttpWebResponse).StatusCode;
+				try
+				{
+					response = base.GetWebResponse(request);
+
+					if (response is HttpWebResponse httpResponse)
+					{
+						StatusCode = (int)httpResponse.StatusCode;
+					}
+				}
+				catch (WebException exp)
+				{
+					response = exp.Response;
+
+					if (response is HttpWebResponse httpResponse)
+					{
+						StatusCode = (int)httpResponse.StatusCode;
+					}
+				}
 
 				return response;
 			}
@@ -458,18 +473,10 @@ public class WebRequests : Library
 
 				var request = base.GetWebRequest(address) as HttpWebRequest;
 
-				request.ServicePoint.MaxIdleTime = request.Timeout;
-				request.ServicePoint.Expect100Continue = ServicePointManager.Expect100Continue;
-				request.ServicePoint.ConnectionLimit = ServicePointManager.DefaultConnectionLimit;
 				request.UserAgent = Community.Runtime.Analytics.UserAgent;
 
-				request.Proxy = null;
-				request.KeepAlive = false;
 				request.AutomaticDecompression = DecompressionMethods.GZip;
-				request.ServicePoint.BindIPEndPointDelegate = (servicePoint, remoteEndPoint, retryCount) =>
-				{
-					return new IPEndPoint(IPAddress.Parse(Community.Runtime.Config.WebRequestIp), 0);
-				};
+				request.ServicePoint.BindIPEndPointDelegate = (_, _, _) => new IPEndPoint(IPAddress.Parse(Community.Runtime.Config.WebRequestIp), 0);
 
 				return request;
 			}

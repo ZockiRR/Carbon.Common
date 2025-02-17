@@ -1,40 +1,56 @@
-﻿/*
- *
- * Copyright (c) 2022-2023 Carbon Community
- * All rights reserved.
- *
- */
+﻿namespace Carbon.Core;
 
-namespace Carbon.Core;
 #pragma warning disable IDE0051
 
-public partial class CorePlugin : CarbonPlugin
+public partial class CorePlugin
 {
 #if !MINIMAL
+
 	#region Implementation
 
 	[Conditional("!MINIMAL")]
-	private object IRecyclerThinkSpeed()
+	internal object IRecyclerThinkSpeed(Recycler recycler)
 	{
-		if (RecycleTick != -1)
+		if (recycler.IsSafezoneRecycler())
 		{
-			return RecycleTick;
+			if (SafezoneRecycleTickMultiplier != -1)
+			{
+				return SafezoneRecycleTickMultiplier;
+			}
+
+			return null;
+		}
+
+		if (RecycleTickMultiplier != -1)
+		{
+			return RecycleTickMultiplier;
 		}
 
 		return null;
 	}
+
 	[Conditional("!MINIMAL")]
-	private object ICraftDurationMultiplier()
+	internal object ICraftDurationMultiplier(ItemBlueprint bp, float workbenchLevel, bool isInTutorial)
 	{
-		if (CraftingSpeedMultiplier != -1)
+		if (isInTutorial)
 		{
-			return CraftingSpeedMultiplier;
+			return null;
 		}
 
-		return null;
+		var workbench = workbenchLevel - bp.workbenchLevelRequired;
+
+		return workbench switch
+		{
+			0 when CraftingSpeedMultiplierNoWB != -1 => CraftingSpeedMultiplierNoWB,
+			1 when CraftingSpeedMultiplierWB1 != -1 => CraftingSpeedMultiplierWB1,
+			2 when CraftingSpeedMultiplierWB2 != -1 => CraftingSpeedMultiplierWB2,
+			3 when CraftingSpeedMultiplierWB3 != -1 => CraftingSpeedMultiplierWB3,
+			_ => null
+		};
 	}
+
 	[Conditional("!MINIMAL")]
-	private object IMixingSpeedMultiplier(MixingTable table, float originalValue)
+	internal object IMixingSpeedMultiplier(MixingTable table, float originalValue)
 	{
 		if (MixingSpeedMultiplier == -1 || table.currentRecipe == null)
 		{
@@ -48,43 +64,79 @@ public partial class CorePlugin : CarbonPlugin
 
 		return null;
 	}
+
 	[Conditional("!MINIMAL")]
-	private object IVendingBuyDuration()
+	internal object IVendingBuyDuration()
 	{
-		if (VendingMachineBuyDuration != -1)
+		if (VendingMachineBuyDurationMultiplier != -1)
 		{
-			return VendingMachineBuyDuration;
+			return VendingMachineBuyDurationMultiplier;
 		}
 
 		return null;
 	}
+
 	[Conditional("!MINIMAL")]
-	private void IOnExcavatorInit(ExcavatorArm arm)
+	internal void IOnExcavatorInit(ExcavatorArm arm)
 	{
-		if (ExcavatorResourceTickRate != -1)
+		if (ExcavatorResourceTickRateMultiplier != -1)
 		{
-			arm.resourceProductionTickRate = ExcavatorResourceTickRate;
+			arm.resourceProductionTickRate *= ExcavatorResourceTickRateMultiplier;
 		}
 
-		if (ExcavatorTimeForFullResources != -1)
+		if (ExcavatorTimeForFullResourcesMultiplier != -1)
 		{
-			arm.timeForFullResources = ExcavatorTimeForFullResources;
+			arm.timeForFullResources *= ExcavatorTimeForFullResourcesMultiplier;
 		}
 
-		if (ExcavatorBeltSpeedMax != -1)
+		if (ExcavatorBeltSpeedMaxMultiplier != -1)
 		{
-			arm.beltSpeedMax = ExcavatorBeltSpeedMax;
+			arm.beltSpeedMax *= ExcavatorBeltSpeedMaxMultiplier;
 		}
 	}
+
 	[Conditional("!MINIMAL")]
-	private void OnItemResearch(ResearchTable table, Item targetItem, BasePlayer player)
+	internal object IOvenSmeltSpeedMultiplier(BaseOven oven)
 	{
-		if (ResearchDuration != -1)
+		if (OvenBlacklistCache == null)
 		{
-			table.researchDuration = ResearchDuration;
+			return null;
 		}
+
+		if (Enumerable.Contains(OvenBlacklistCache, oven.ShortPrefabName) ||
+		    Enumerable.Contains(OvenBlacklistCache, oven.GetType().Name))
+		{
+			if (OvenBlacklistSpeedMultiplier != -1)
+			{
+				return OvenBlacklistSpeedMultiplier;
+			}
+
+			return null;
+		}
+
+		if (OvenSpeedMultiplier != -1)
+		{
+			return OvenSpeedMultiplier;
+		}
+
+		return null;
+	}
+
+	[Conditional("!MINIMAL")]
+	private void IResearchDuration() { }
+
+	[Conditional("!MINIMAL")]
+	private object CanUnlockTechTreeNode()
+	{
+		if (NoTechTreeUnlockCache)
+		{
+			return false;
+		}
+
+		return null;
 	}
 
 	#endregion
+
 #endif
 }

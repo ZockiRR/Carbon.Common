@@ -1,15 +1,5 @@
 ﻿#if !MINIMAL
 
-using API.Hooks;
-using Oxide.Game.Rust.Cui;
-
-/*
- *
- * Copyright (c) 2022-2023 Carbon Community
- * All rights reserved.
- *
- */
-
 namespace Carbon.Modules;
 
 public partial class AdminModule
@@ -51,7 +41,7 @@ public partial class AdminModule
 		{
 			var queue = GetOrCreateQueue(player);
 
-			Community.Runtime.CorePlugin.timer.In(duration, () =>
+			Community.Runtime.Core.timer.In(duration, () =>
 			{
 				queue.RemoveAt(queue.Count - 1);
 				Redraw(player);

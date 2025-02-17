@@ -1,12 +1,5 @@
 ﻿#if !MINIMAL
 
-/*
- *
- * Copyright (c) 2022-2023 Carbon Community
- * All rights reserved.
- *
- */
-
 using Newtonsoft.Json.Linq;
 using StringEx = Carbon.Extensions.StringEx;
 using static Carbon.Components.CUI;
@@ -26,15 +19,16 @@ public partial class AdminModule
 		{
 		}
 
-		public static ConfigEditor Make(string json, Action<PlayerSession, JObject> onCancel, Action<PlayerSession, JObject> onSave, Action<PlayerSession, JObject> onSaveAndReload, string[] blacklist = null)
+		public static ConfigEditor Make(string json, Action<PlayerSession, JObject> onCancel, Action<PlayerSession, JObject> onSave, Action<PlayerSession, JObject> onSaveAndReload, bool fullscreen = false, string[] blacklist = null)
 		{
-			var tab = new ConfigEditor("configeditor", "Config Editor", Community.Runtime.CorePlugin)
+			var tab = new ConfigEditor("configeditor", "Config Editor", Community.Runtime.Core)
 			{
 				Entry = JObject.Parse(json),
 				OnSave = onSave,
 				OnSaveAndReload = onSaveAndReload,
 				OnCancel = onCancel,
-				Blacklist = blacklist
+				Blacklist = blacklist,
+				IsFullscreen = fullscreen
 			};
 
 			tab._draw();
@@ -46,13 +40,13 @@ public partial class AdminModule
 			AddColumn(0);
 			AddColumn(1);
 
-			var list = Facepunch.Pool.GetList<OptionButton>();
+			var list = Facepunch.Pool.Get<List<OptionButton>>();
 			if (OnCancel != null) list.Add(new OptionButton("Cancel", ap => { OnCancel?.Invoke(ap, Entry); }));
 			if (OnSave != null) list.Add(new OptionButton("Save", ap => { OnSave?.Invoke(ap, Entry); }));
 			if (OnSaveAndReload != null) list.Add(new OptionButton("Save & Reload", ap => { OnSaveAndReload?.Invoke(ap, Entry); }));
 
 			AddButtonArray(0, list.ToArray());
-			Facepunch.Pool.FreeList(ref list);
+			Facepunch.Pool.FreeUnmanaged(ref list);
 
 			foreach (var token in Entry)
 			{
@@ -93,7 +87,7 @@ public partial class AdminModule
 								{
 									value = value.StartsWith("#") ? hex : rust;
 									usableToken.Replace(usableToken = $"#{value}");
-									Community.Runtime.CorePlugin.NextFrame(() => Singleton.SetTab(ap.Player, Make(Entry.ToString(), OnCancel, OnSave, OnSaveAndReload), false));
+									Community.Runtime.Core.NextFrame(() => Singleton.SetTab(ap.Player, Make(Entry.ToString(), OnCancel, OnSave, OnSaveAndReload), false));
 								}, tooltip: $"The color value of the '{name.Trim()}' property.");
 							}
 							else AddInput(column, name, ap => usableToken.ToObject<string>(), (ap, args) => { usableToken.Replace(usableToken = args.ToString(" ")); });

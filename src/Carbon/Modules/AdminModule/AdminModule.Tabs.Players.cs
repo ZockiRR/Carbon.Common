@@ -1,15 +1,10 @@
 ﻿#if !MINIMAL
 
-/*
- *
- * Copyright (c) 2022-2023 Carbon Community
- * All rights reserved.
- *
- */
+using ProtoBuf;
 
 namespace Carbon.Modules;
 
-public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
+public partial class AdminModule
 {
 	readonly int[] _backpacks = new[]
 	{
@@ -23,7 +18,7 @@ public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
 
 		public static Tab Get()
 		{
-			var players = new Tab("players", "Players", Community.Runtime.CorePlugin, (instance, tab) =>
+			var players = new Tab("players", "Players", Community.Runtime.Core, (instance, tab) =>
 			{
 				tab.ClearColumn(1);
 				RefreshPlayers(tab, instance);
@@ -107,7 +102,7 @@ public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
 			try
 			{
 				var position = player.transform.position;
-				tab.AddInput(column, "Position", _ => $"{position} [{PhoneController.PositionToGridCoord(position)}]", null);
+				tab.AddInput(column, "Position", _ => $"{position} [{MapHelper.PositionToGrid(position)}]", null);
 			}
 			catch { }
 
@@ -124,7 +119,7 @@ public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
 					tab.AddButton(column, "View Permissions", ap =>
 					{
 						var perms = Singleton.FindTab("permissions");
-						var permission = Community.Runtime.CorePlugin.permission;
+						var permission = Community.Runtime.Core.permission;
 						Singleton.SetTab(ap.Player, "permissions");
 
 						ap.SetStorage(tab, "player", player.UserIDString);
@@ -134,7 +129,7 @@ public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
 				}
 			}
 
-			if (Singleton.Permissions.UserHasPermission(aap.Player.UserIDString, "carbon.cmod"))
+			if (aap.Player.IsAdmin || Singleton.Permissions.UserHasPermission(aap.Player.UserIDString, "carbon.cmod"))
 			{
 				tab.AddButtonArray(column, new Tab.OptionButton("Kick", _ =>
 				{
@@ -215,7 +210,22 @@ public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
 						{
 							player.Teleport(ap.Player.transform.position);
 						}, null);
-					}));
+					}),
+					new Tab.OptionButton("Teleport2OwnedItem",
+						ap =>
+						{
+							var entities = BaseEntity.Util.FindTargetsOwnedBy(player.userID, string.Empty);
+
+							if (entities.Length > 0)
+							{
+								var randomEntity = entities[RandomEx.GetRandomInteger(0, entities.Length)];
+								ap.Player.Teleport(randomEntity.transform.position);
+							}
+							else
+							{
+								Logger.Warn($" No entities owned by {player} could be found to teleport to.");
+							}
+						}));
 			}
 
 			if (Singleton.HasAccess(aap.Player, "entities.loot_players"))
@@ -345,13 +355,15 @@ public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
 			tab.AddRange(column, "Hunger", 0, player.metabolism.calories.max, _ => player.metabolism.calories.value, (_, value) => player.metabolism.calories.SetValue(value), _ => $"{player.metabolism.calories.value:0}");
 			tab.AddRange(column, "Radiation", 0, player.metabolism.radiation_poison.max, _ => player.metabolism.radiation_poison.value, (_, value) => player.metabolism.radiation_poison.SetValue(value), _ => $"{player.metabolism.radiation_poison.value:0}");
 			tab.AddRange(column, "Bleeding", 0, player.metabolism.bleeding.max, _ => player.metabolism.bleeding.value, (_, value) => player.metabolism.bleeding.SetValue(value), _ => $"{player.metabolism.bleeding.value:0}");
-			tab.AddButton(column, "Empower Stats", ap =>
+			tab.AddRange(column, "Wetness", 0, player.metabolism.wetness.max * 10f, ap => player.metabolism.wetness.value * 10f, (_, value) => player.metabolism.wetness.SetValue(value * 0.1f), _ => $"{player.metabolism.wetness.value * 100f:0}%");
+			tab.AddButton(column, "Empower Stats", _ =>
 			{
 				player.SetHealth(player.MaxHealth());
 				player.metabolism.hydration.SetValue(player.metabolism.hydration.max);
 				player.metabolism.calories.SetValue(player.metabolism.calories.max);
 				player.metabolism.radiation_poison.SetValue(0);
 				player.metabolism.bleeding.SetValue(0);
+				player.metabolism.wetness.SetValue(0);
 			});
 
 			if (Singleton.HasAccess(aap.Player, "players.craft_queue"))
@@ -370,7 +382,7 @@ public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
 							0, true, null),
 						new Tab.OptionButton("X", TextAnchor.MiddleCenter, ap =>
 						{
-							player.inventory.crafting.CancelTask(craft.taskUID, true);
+							player.inventory.crafting.CancelTask(craft.taskUID);
 							ShowInfo(column, tab, ap, player);
 						}, _ => Tab.OptionButton.Types.Important));
 				}
@@ -386,7 +398,7 @@ public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
 			tab.ClearColumn(column);
 
 			var counter = 0;
-			var currentButtons = Facepunch.Pool.GetList<Tab.OptionButton>();
+			var currentButtons = Facepunch.Pool.Get<List<Tab.OptionButton>>();
 
 			tab.ClearColumn(column);
 
@@ -412,7 +424,7 @@ public partial class AdminModule : CarbonModule<AdminConfig, AdminData>
 				}
 			}
 
-			Facepunch.Pool.FreeList(ref currentButtons);
+			Facepunch.Pool.FreeUnmanaged(ref currentButtons);
 		}
 	}
 }

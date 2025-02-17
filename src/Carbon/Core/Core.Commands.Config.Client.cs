@@ -1,21 +1,9 @@
-﻿using API.Assembly;
-using API.Commands;
-using Carbon.Base.Interfaces;
-using Carbon.Client;
-using Newtonsoft.Json;
-using Oxide.Game.Rust.Cui;
-
-/*
- *
- * Copyright (c) 2022-2023 Carbon Community
- * All rights reserved.
- *
- */
+﻿using System.Text;
+using Facepunch;
 
 namespace Carbon.Core;
-#pragma warning disable IDE0051
 
-public partial class CorePlugin : CarbonPlugin
+public partial class CorePlugin
 {
 	public bool ClientEnabledCheck()
 	{
@@ -50,8 +38,7 @@ public partial class CorePlugin : CarbonPlugin
 		arg.ReplyWith("Saved Carbon Client config.");
 	}
 
-	[CommandVar("client.enabled",
-		"Enable this if the server is Carbon client-enabled server. [Only applies on server restart]")]
+	[CommandVar("client.enabled", "Enable this if the server is Carbon client-enabled server. [Only applies on server restart]")]
 	[AuthLevel(2)]
 	private bool ClientEnabled
 	{
@@ -72,7 +59,7 @@ public partial class CorePlugin : CarbonPlugin
 	[AuthLevel(2)]
 	private void ClientAddons(ConsoleSystem.Arg args)
 	{
-		var builder = PoolEx.GetStringBuilder();
+		var builder = Pool.Get<StringBuilder>();
 
 		builder.AppendLine($"Client Addons ({Community.Runtime.ClientConfig.Addons.Count:n0})");
 
@@ -83,22 +70,22 @@ public partial class CorePlugin : CarbonPlugin
 
 		args.ReplyWith(builder.ToString());
 
-		PoolEx.FreeStringBuilder(ref builder);
+		Pool.FreeUnmanaged(ref builder);
 	}
 
 	[ConsoleCommand("client.stats", "Prints a list of useful statistic information of Carbon Client performance.")]
 	[AuthLevel(2)]
 	private void ClientStats(ConsoleSystem.Arg args)
 	{
-		using var table = new StringTable("Addons", "Assets", "Spawnable Prefabs", "Prefabs (Custom)", "Prefabs (Rust)", "Entities");
+		using var table = new StringTable("addons", "assets", "spawnable prefabs", "prefabs (custom)", "prefabs (rust)", "entities");
 
 		table.AddRow(
-			Community.Runtime.CarbonClientManager.AddonCount.ToString("n0"),
-			Community.Runtime.CarbonClientManager.AssetCount.ToString("n0"),
-			Community.Runtime.CarbonClientManager.SpawnablePrefabsCount.ToString("n0"),
-			Community.Runtime.CarbonClientManager.PrefabsCount.ToString("n0"),
-			Community.Runtime.CarbonClientManager.RustPrefabsCount.ToString("n0"),
-			Community.Runtime.CarbonClientManager.EntityCount.ToString("n0"));
+			Community.Runtime.CarbonClient.AddonCount.ToString("n0"),
+			Community.Runtime.CarbonClient.AssetCount.ToString("n0"),
+			Community.Runtime.CarbonClient.SpawnablePrefabsCount.ToString("n0"),
+			Community.Runtime.CarbonClient.PrefabsCount.ToString("n0"),
+			Community.Runtime.CarbonClient.RustPrefabsCount.ToString("n0"),
+			Community.Runtime.CarbonClient.EntityCount.ToString("n0"));
 
 		args.ReplyWith(table.ToStringMinimal());
 	}
@@ -124,20 +111,20 @@ public partial class CorePlugin : CarbonPlugin
 			return;
 		}
 
-		Community.Runtime.CarbonClientManager.UninstallAddons();
+		Community.Runtime.CarbonClient.UninstallAddons();
 	}
 
 	public static void ReloadCarbonClientAddons(bool async = false)
 	{
-		Community.Runtime.CarbonClientManager.UninstallAddons();
+		Community.Runtime.CarbonClient.UninstallAddons();
 
 		if (async)
 		{
-			Community.Runtime.CarbonClientManager.InstallAddonsAsync(Community.Runtime.ClientConfig.NetworkedAddonsCache);
+			Community.Runtime.CarbonClient.InstallAddonsAsync(Community.Runtime.ClientConfig.AddonCache);
 		}
 		else
 		{
-			Community.Runtime.CarbonClientManager.InstallAddons(Community.Runtime.ClientConfig.NetworkedAddonsCache);
+			Community.Runtime.CarbonClient.InstallAddons(Community.Runtime.ClientConfig.AddonCache);
 		}
 	}
 }

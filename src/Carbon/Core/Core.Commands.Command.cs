@@ -1,21 +1,14 @@
 ﻿using API.Commands;
 
-/*
- *
- * Copyright (c) 2022-2023 Carbon Community
- * All rights reserved.
- *
- */
-
 namespace Carbon.Core;
 
-public partial class CorePlugin : CarbonPlugin
+public partial class CorePlugin
 {
 	[ConsoleCommand("find", "Searches through Carbon-processed console commands.")]
 	[AuthLevel(2)]
 	private void Find(ConsoleSystem.Arg arg)
 	{
-		using var body = new StringTable("Console Command", "Value", "Help");
+		using var body = new StringTable("command", "value", "help");
 		var filter = arg.Args != null && arg.Args.Length > 0 ? arg.GetString(0) : null;
 
 		foreach (var command in Community.Runtime.CommandManager.ClientConsole)
@@ -23,6 +16,7 @@ public partial class CorePlugin : CarbonPlugin
 			if (command.HasFlag(CommandFlags.Hidden) || (!string.IsNullOrEmpty(filter) && !command.Name.Contains(filter))) continue;
 
 			var value = " ";
+			var moddedStatus = string.Empty;
 
 			if (command.Token != null)
 			{
@@ -35,7 +29,18 @@ public partial class CorePlugin : CarbonPlugin
 				value = new string('*', value.Length);
 			}
 
-			body.AddRow($" {command.Name}", value, command.Help);
+			if (command.Token != null)
+			{
+				switch (command.Token)
+				{
+					case FieldInfo field when field.GetCustomAttribute<CarbonAutoVar>() is CarbonAutoVar autoVar && autoVar.ForceModded:
+					case PropertyInfo property when property.GetCustomAttribute<CarbonAutoVar>() is CarbonAutoVar autoVar2 && autoVar2.ForceModded:
+						moddedStatus += $" Marks the server to be modded.";
+						break;
+				}
+			}
+
+			body.AddRow($" {command.Name}", value, command.Help + moddedStatus);
 		}
 
 		arg.ReplyWith(body.Write(StringTable.FormatTypes.None));
@@ -45,7 +50,7 @@ public partial class CorePlugin : CarbonPlugin
 	[AuthLevel(2)]
 	private void FindChat(ConsoleSystem.Arg arg)
 	{
-		using var body = new StringTable("Chat Command", "Help");
+		using var body = new StringTable("command", "help");
 		var filter = arg.Args != null && arg.Args.Length > 0 ? arg.GetString(0) : null;
 
 		foreach (var command in Community.Runtime.CommandManager.Chat)

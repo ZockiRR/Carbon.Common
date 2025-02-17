@@ -1,21 +1,13 @@
-﻿/*
- *
- * Copyright (c) 2022-2023 Carbon Community
- * All rights reserved.
- *
- */
+﻿namespace Carbon.Core;
 
-using Connection = Network.Connection;
-
-namespace Carbon.Core;
 #pragma warning disable IDE0051
 
-public partial class CorePlugin : CarbonPlugin
+public partial class CorePlugin
 {
 	internal static object IOnNpcTarget(BaseNpc npc, BaseEntity target)
 	{
 		// OnNpcTarget
-		if (HookCaller.CallStaticHook(1265749384, npc, target) == null)
+		if (HookCaller.CallStaticHook(1066895325, npc, target) == null)
 		{
 			return null;
 		}

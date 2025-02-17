@@ -1,11 +1,4 @@
-﻿/*
- *
- * Copyright (c) 2022-2024 Carbon Community
- * All rights reserved.
- *
- */
-
-namespace Carbon.Base.Interfaces;
+﻿namespace Carbon.Base.Interfaces;
 
 public interface IModule : IDisposable
 {
@@ -23,7 +16,7 @@ public interface IModule : IDisposable
 	void OnPostServerInit(bool initial);
 	void OnServerSaved();
 	void SetEnabled(bool enabled);
-	bool GetEnabled();
+	bool IsEnabled();
 	void OnEnableStatus();
 
 	Dictionary<string, Dictionary<string, string>> GetDefaultPhrases();

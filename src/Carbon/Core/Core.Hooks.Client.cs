@@ -1,48 +1,41 @@
-﻿/*
- *
- * Copyright (c) 2022-2023 Carbon Community
- * All rights reserved.
- *
- */
-
-using Carbon.Client.SDK;
-using Connection = Network.Connection;
+﻿using Carbon.Client.SDK;
 
 namespace Carbon.Core;
-#pragma warning disable IDE0051
 
-public partial class CorePlugin : CarbonPlugin
+public partial class CorePlugin
 {
-	private void IOnCarbonClientReady(ICarbonClient client)
+	private void IOnCarbonClientReady(ICarbonConnection client)
 	{
 		if (!Community.Runtime.ClientConfig.Enabled)
 		{
 			return;
 		}
 
-		Logger.Log($"{client.Connection} is ready");
-		Community.Runtime.CarbonClientManager.SendRequestToPlayer(client.Connection);
+		Logger.Log($"{client.Username}[{client.UserId}] is ready");
+
+		var connection = Network.Net.sv.FindConnection(client.Connection);
+		Community.Runtime.CarbonClient.SendRequestToPlayer(connection);
 	}
 
-	private void OnClientAddonsDownload(ICarbonClient client)
+	private void OnClientAddonsDownload(ICarbonConnection client)
 	{
 		if (!Community.Runtime.ClientConfig.Enabled)
 		{
 			return;
 		}
 
-		Logger.Log($"{client.Connection} is downloading addons");
+		Logger.Log($"{client.Username}[{client.UserId}] is downloading addons");
 		client.IsDownloadingAddons = true;
 	}
 
-	private void OnClientAddonsFinalized(ICarbonClient client)
+	private void OnClientAddonsFinalized(ICarbonConnection client)
 	{
 		if (!Community.Runtime.ClientConfig.Enabled)
 		{
 			return;
 		}
 
-		Logger.Log($"{client.Connection} finished downloading addons");
+		Logger.Log($"{client.Username}[{client.UserId}] finished downloading addons");
 		client.IsDownloadingAddons = false;
 	}
 }
