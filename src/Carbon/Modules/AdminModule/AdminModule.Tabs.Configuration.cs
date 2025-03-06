@@ -190,7 +190,7 @@ public partial class AdminModule
 			{
 				tab.ClearColumn(0);
 				{
-					tab.AddButton(0, "< Go Back", ap => Singleton.SetTab(session.Player, 0),
+					tab.AddButton(-1, "< Go Back", ap => Singleton.SetTab(session.Player, 0),
 						ap => AdminModule.Tab.OptionButton.Types.Selected);
 
 					tab.AddName(0, "Configuration");
@@ -324,7 +324,7 @@ public partial class AdminModule
 				{
 					var configTab = session.GetStorage(tab, "configtab", ConfigTabs.ConVars);
 
-					tab.AddButtonArray(1,
+					tab.AddButtonArray(-2,
 						new OptionButton("ConVars", ap =>
 							{
 								session.SetStorage(tab, "configtab", ConfigTabs.ConVars);
@@ -356,6 +356,8 @@ public partial class AdminModule
 							var convarSearch = session.GetStorage(tab, "convarsearch", string.Empty);
 							var currentlyDisplaying = ConVarSnapshots.Snapshots.Count(x =>
 								string.IsNullOrEmpty(convarSearch) || x.Key.Contains(convarSearch));
+
+							tab.AddText(1, "Changing the following values will not be stored anywhere. This page is simply for informational purposes.\nIf you want Rust to load up your changes, please add them in 'server/identity/cfg/server.cfg'.", 8, "1 1 1 0.5", TextAnchor.MiddleCenter);
 
 							if (string.IsNullOrEmpty(convarSearch))
 							{
