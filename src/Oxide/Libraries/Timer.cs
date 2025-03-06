@@ -146,7 +146,7 @@ public class Timers : Library
 	}
 }
 
-public class Timer : Library
+public class Timer : IDisposable
 {
 	public Plugin Plugin { get; set; }
 
@@ -170,7 +170,15 @@ public class Timer : Library
 	{
 		TimesTriggered = 0;
 		Repetitions = repetitions;
-		Delay = delay;
+
+		if (delay < 0)
+		{
+			delay = Delay;
+		}
+		else
+		{
+			Delay = delay;
+		}
 
 		if (Destroyed)
 		{
@@ -248,10 +256,8 @@ public class Timer : Library
 	{
 		Destroy();
 	}
-	public override void Dispose()
+	public void Dispose()
 	{
 		Destroy();
-
-		base.Dispose();
 	}
 }
