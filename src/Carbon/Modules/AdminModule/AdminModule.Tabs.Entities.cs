@@ -327,8 +327,6 @@ public partial class AdminModule
 								LastContainerLooter = ap;
 
 								ap.SetStorage(tab, "lootedent", entity);
-								Admin.Subscribe("OnEntityVisibilityCheck");
-								Admin.Subscribe("OnEntityDistanceCheck");
 
 								Core.timer.In(0.2f, () => Admin.Close(ap.Player));
 								Core.timer.In(0.5f, () =>
@@ -346,6 +344,7 @@ public partial class AdminModule
 									ap.Player.ClientRPC(RpcTarget.Player("RPC_OpenLootPanel", ap.Player), storage.panelName);
 								});
 							});
+							tab.AddText(1, "To loot a backpack, drag the backpack item over any hotbar slots while looting an entity", 10, "1 1 1 0.4");
 						}
 					}
 
@@ -452,27 +451,7 @@ public partial class AdminModule
 							{
 								if (multiSelection) return;
 
-								LastContainerLooter = ap;
-								ap.SetStorage(tab, "lootedent", entity);
-								SendEntityToPlayer(ap.Player, entity);
-
-								Core.timer.In(0.2f, () => Admin.Close(ap.Player));
-								Core.timer.In(0.5f, () =>
-								{
-									SendEntityToPlayer(ap.Player, entity);
-
-									ap.Player.inventory.loot.Clear();
-									ap.Player.inventory.loot.PositionChecks = false;
-									ap.Player.inventory.loot.entitySource = RelationshipManager.ServerInstance;
-									ap.Player.inventory.loot.itemSource = null;
-									ap.Player.inventory.loot.AddContainer(player.inventory.containerMain);
-									ap.Player.inventory.loot.AddContainer(player.inventory.containerWear);
-									ap.Player.inventory.loot.AddContainer(player.inventory.containerBelt);
-									ap.Player.inventory.loot.MarkDirty();
-									ap.Player.inventory.loot.SendImmediate();
-
-									ap.Player.ClientRPC(RpcTarget.Player("RPC_OpenLootPanel", ap.Player), "player_corpse");
-								});
+								OpenPlayerContainer(ap, player, tab);
 							}));
 
 							temp.Add(new Tab.OptionButton("Strip", ap =>
@@ -502,6 +481,8 @@ public partial class AdminModule
 						tab.AddButtonArray(column, temp.ToArray());
 
 						Pool.FreeUnmanaged(ref temp);
+
+						tab.AddText(1, "To loot a backpack, drag the backpack item over any hotbar slots while looting a player", 10, "1 1 1 0.4");
 
 						if (Singleton.HasAccess(ap3.Player, "players.inventory_management"))
 						{
