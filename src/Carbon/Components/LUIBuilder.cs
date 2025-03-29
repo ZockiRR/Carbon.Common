@@ -272,11 +272,13 @@ public static class LUIBuilder
 			value = -value;
 		}
 		int intPart = (int)value;
-		index += WriteIntDigits(intPart, buffer.Slice(index));
-		buffer[index++] = dot;
 		float fractional = value - intPart;
 		long factor = _pow10[precision];
 		long fracAsInt = (long)(fractional * factor + 0.5f);
+		if (fracAsInt == _pow10[precision])
+			intPart++;
+		index += WriteIntDigits(intPart, buffer[index..]);
+		buffer[index++] = dot;
 		int fracStart = index;
 		for (int i = 0; i < precision; i++)
 		{
@@ -690,6 +692,9 @@ public struct LuiBuilderInstance : IDisposable
 			                    this.WriteField("autofocus", true);
 		                    }
 		                    break;
+	                    case LuiCompType.NeedsCursor:
+		                    found++;
+		                    break;
                         case LuiCompType.RectTransform:
 	                        LuiRectTransformComp rect = component as LuiRectTransformComp;
                             found++;
@@ -836,6 +841,9 @@ public struct LuiBuilderInstance : IDisposable
 			                    this.WriteComma();
 			                    this.WriteField("filter", slot.filter);
 		                    }
+		                    break;
+	                    case LuiCompType.NeedsKeyboard:
+		                    found++;
 		                    break;
 	                    case LuiCompType.ScrollView:
 		                    LuiScrollComp scroll = component as LuiScrollComp;

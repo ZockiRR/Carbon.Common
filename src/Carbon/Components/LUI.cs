@@ -124,10 +124,12 @@ public class LUI : IDisposable
 
 	#region Panel Creation
 
+	public LuiContainer CreateEmptyContainer(LuiContainer container, string name = "", bool add = false) => CreateEmptyContainer(container.name, name, add);
+
 	/// <summary>
 	/// Creates empty container without anything. Shouldn't be used outside LUI library, but in rare cases might be useful.
 	/// </summary>
-	public LuiContainer CreateEmptyContainer(string parent, string name = "")
+	public LuiContainer CreateEmptyContainer(string parent, string name = "", bool add = false)
 	{
 		LuiContainer cont = LuiPool.GetContainer();
 		cont.parent = parent;
@@ -139,6 +141,8 @@ public class LUI : IDisposable
 			lastName = newName;
 			cont.name = newName;
 		}
+		if (add)
+			elements.Add(cont);
 		return cont;
 	}
 
@@ -395,6 +399,86 @@ public class LUI : IDisposable
 		elements.Clear();
 	}
 
+	#region Quicker Strings
+
+
+
+	public static string GetFont(CUI.Handler.FontTypes type)
+	{
+		return type switch
+		{
+			CUI.Handler.FontTypes.RobotoCondensedBold => "robotocondensed-bold.ttf",
+			CUI.Handler.FontTypes.RobotoCondensedRegular => "robotocondensed-regular.ttf",
+			CUI.Handler.FontTypes.PermanentMarker => "permanentmarker.ttf",
+			CUI.Handler.FontTypes.DroidSansMono => "droidsansmono.ttf",
+			CUI.Handler.FontTypes.NotoSansArabicBold => "NotoSansArabic-Bold.ttf",
+			_ => "robotocondensed-regular.ttf"
+		};
+	}
+
+	public static string GetAlign(TextAnchor anchor)
+	{
+		return anchor switch
+		{
+			TextAnchor.UpperLeft => nameof(TextAnchor.UpperLeft),
+			TextAnchor.UpperCenter => nameof(TextAnchor.UpperCenter),
+			TextAnchor.UpperRight => nameof(TextAnchor.UpperRight),
+			TextAnchor.MiddleLeft => nameof(TextAnchor.MiddleLeft),
+			TextAnchor.MiddleCenter => nameof(TextAnchor.MiddleCenter),
+			TextAnchor.MiddleRight => nameof(TextAnchor.MiddleRight),
+			TextAnchor.LowerLeft => nameof(TextAnchor.LowerLeft),
+			TextAnchor.LowerCenter => nameof(TextAnchor.LowerCenter),
+			TextAnchor.LowerRight => nameof(TextAnchor.LowerRight),
+			_ => nameof(TextAnchor.UpperLeft)
+		};
+	}
+
+	public static string GetImageType(UnityEngine.UI.Image.Type imgType)
+	{
+		return imgType switch
+		{
+			Image.Type.Simple => nameof(Image.Type.Simple),
+			Image.Type.Sliced => nameof(Image.Type.Sliced),
+			Image.Type.Tiled => nameof(Image.Type.Tiled),
+			Image.Type.Filled => nameof(Image.Type.Filled),
+			_ => nameof(Image.Type.Simple)
+		};
+	}
+
+	public static string GetWrapMode(VerticalWrapMode mode)
+	{
+		return mode switch
+		{
+			VerticalWrapMode.Truncate => nameof(VerticalWrapMode.Truncate),
+			VerticalWrapMode.Overflow => nameof(VerticalWrapMode.Overflow),
+			_ => nameof(VerticalWrapMode.Truncate)
+		};
+	}
+
+	public static string GetLineType(InputField.LineType lineType)
+	{
+		return lineType switch
+		{
+			InputField.LineType.SingleLine => nameof(InputField.LineType.SingleLine),
+			InputField.LineType.MultiLineSubmit => nameof(InputField.LineType.MultiLineSubmit),
+			InputField.LineType.MultiLineNewline => nameof(InputField.LineType.MultiLineNewline),
+			_ => nameof(InputField.LineType.SingleLine)
+		};
+	}
+
+	public static string GetMovementType(ScrollRect.MovementType movementType)
+	{
+		return movementType switch
+		{
+			ScrollRect.MovementType.Unrestricted => nameof(ScrollRect.MovementType.Unrestricted),
+			ScrollRect.MovementType.Elastic => nameof(ScrollRect.MovementType.Elastic),
+			ScrollRect.MovementType.Clamped => nameof(ScrollRect.MovementType.Clamped),
+			_ => nameof(ScrollRect.MovementType.Unrestricted)
+		};
+	}
+
+	#endregion
+
 	public class LuiContainer
 	{
 		public string name;
@@ -484,7 +568,7 @@ public class LUI : IDisposable
 				if (color != null)
 					text.color = color;
 				if (!update)
-					text.align = nameof(alignment);
+					text.align = GetAlign(alignment);
 			}
 			else
 			{
@@ -495,7 +579,7 @@ public class LUI : IDisposable
 				if (color != null)
 					text.color = color;
 				if (!update)
-					text.align = nameof(alignment);
+					text.align = GetAlign(alignment);
 				luiComponents.Add(text.type, text);
 			}
 			return this;
@@ -520,12 +604,12 @@ public class LUI : IDisposable
 		{
 			if (luiComponents.TryGetValue<LuiTextComp>(LuiCompType.Text, out var text))
 			{
-				text.font = nameof(font);
+				text.font = GetFont(font);
 			}
 			else
 			{
 				text = LuiPool.GetText();
-				text.font = nameof(font);
+				text.font = GetFont(font);
 				luiComponents.Add(text.type, text);
 			}
 			return this;
@@ -535,12 +619,12 @@ public class LUI : IDisposable
 		{
 			if (luiComponents.TryGetValue<LuiTextComp>(LuiCompType.Text, out var text))
 			{
-				text.align = nameof(align);
+				text.align = GetAlign(align);
 			}
 			else
 			{
 				text = LuiPool.GetText();
-				text.align = nameof(align);
+				text.align = GetAlign(align);
 				luiComponents.Add(text.type, text);
 			}
 			return this;
@@ -550,12 +634,12 @@ public class LUI : IDisposable
 		{
 			if (luiComponents.TryGetValue<LuiTextComp>(LuiCompType.Text, out var text))
 			{
-				text.verticalOverflow = nameof(verticalOverflow);
+				text.verticalOverflow = GetWrapMode(verticalOverflow);
 			}
 			else
 			{
 				text = LuiPool.GetText();
-				text.verticalOverflow = nameof(verticalOverflow);
+				text.verticalOverflow = GetWrapMode(verticalOverflow);
 				luiComponents.Add(text.type, text);
 			}
 			return this;
@@ -595,6 +679,21 @@ public class LUI : IDisposable
 			return this;
 		}
 
+		public LuiContainer SetImageType(UnityEngine.UI.Image.Type imageType)
+		{
+			if (luiComponents.TryGetValue<LuiImageComp>(LuiCompType.Image, out var img))
+			{
+				img.imageType = GetImageType(imageType);
+			}
+			else
+			{
+				img = LuiPool.GetImage();
+				img.imageType = GetImageType(imageType);
+				luiComponents.Add(img.type, img);
+			}
+			return this;
+		}
+
 		public LuiContainer SetSprite(string sprite = null, string color = null, UnityEngine.UI.Image.Type imageType = Image.Type.Simple)
 		{
 			if (luiComponents.TryGetValue<LuiImageComp>(LuiCompType.Image, out var img))
@@ -602,7 +701,7 @@ public class LUI : IDisposable
 				if (sprite != null)
 				{
 					img.sprite = sprite;
-					img.imageType = nameof(imageType);
+					img.imageType = GetImageType(imageType);
 				}
 				if (color != null)
 					img.color = color;
@@ -613,7 +712,7 @@ public class LUI : IDisposable
 				if (sprite != null)
 				{
 					img.sprite = sprite;
-					img.imageType = nameof(imageType);
+					img.imageType = GetImageType(imageType);
 				}
 				if (color != null)
 					img.color = color;
@@ -832,13 +931,13 @@ public class LUI : IDisposable
 			if (luiComponents.TryGetValue<LuiButtonComp>(LuiCompType.Button, out var button))
 			{
 				button.sprite = sprite;
-				button.imageType = nameof(imageType);
+				button.imageType = GetImageType(imageType);
 			}
 			else
 			{
 				button = LuiPool.GetButton();
 				button.sprite = sprite;
-				button.imageType = nameof(imageType);
+				button.imageType = GetImageType(imageType);
 				luiComponents.Add(button.type, button);
 			}
 			return this;
@@ -902,8 +1001,8 @@ public class LUI : IDisposable
 					input.characterLimit = charLimit;
 				if (!update)
 				{
-					input.align = nameof(alignment);
-					input.font = nameof(font);
+					input.align = GetAlign(alignment);
+					input.font = GetFont(font);
 				}
 			}
 			else
@@ -921,8 +1020,8 @@ public class LUI : IDisposable
 					input.characterLimit = charLimit;
 				if (!update)
 				{
-					input.align = nameof(alignment);
-					input.font = nameof(font);
+					input.align = GetAlign(alignment);
+					input.font = GetFont(font);
 				}
 				luiComponents.Add(input.type, input);
 			}
@@ -991,16 +1090,16 @@ public class LUI : IDisposable
 			return this;
 		}
 
-		public LuiContainer SetInputLineType(UnityEngine.UI.InputField.LineType lineType)
+		public LuiContainer SetInputLineType(InputField.LineType lineType)
 		{
 			if (luiComponents.TryGetValue<LuiInputComp>(LuiCompType.InputField, out var input))
 			{
-				input.lineType = nameof(lineType);
+				input.lineType = GetLineType(lineType);
 			}
 			else
 			{
 				input = LuiPool.GetInput();
-				input.lineType = nameof(lineType);
+				input.lineType = GetLineType(lineType);
 				luiComponents.Add(input.type, input);
 			}
 			return this;
@@ -1213,7 +1312,7 @@ public class LUI : IDisposable
 				{
 					scroll.vertical = vertical;
 					scroll.horizontal = horizontal;
-					scroll.movementType = nameof(movementType);
+					scroll.movementType = GetMovementType(movementType);
 					scroll.inertia = inertia;
 				}
 				if (elasticity != 0)
@@ -1232,7 +1331,7 @@ public class LUI : IDisposable
 				{
 					scroll.vertical = vertical;
 					scroll.horizontal = horizontal;
-					scroll.movementType = nameof(movementType);
+					scroll.movementType = GetMovementType(movementType);
 					scroll.inertia = inertia;
 				}
 				if (elasticity != 0)
