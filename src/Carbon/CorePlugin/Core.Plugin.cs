@@ -90,7 +90,8 @@ public partial class CorePlugin : CarbonPlugin
 			Logger.CoreLog.Flush();
 		});
 
-		cmd.AddConsoleCommand("help", this, nameof(Help), authLevel: 2);
+		cmd.AddConsoleCommand("help", this, nameof(Help), authLevel: 2, help: "HELP!");
+		cmd.AddConsoleCommand("harmony.mods", this, nameof(HarmonyMods), authLevel: 2, help: "Prints a full list of all active HarmonyMods processed by Rust.");
 
 		return true;
 	}
@@ -153,18 +154,6 @@ public partial class CorePlugin : CarbonPlugin
 		eventArg.Init(plugin);
 		Community.Runtime.Events.Trigger(CarbonEvent.PluginUnloaded, eventArg);
 		Pool.Free(ref eventArg);
-	}
-	private void OnEntitySpawned(BaseEntity entity)
-	{
-		Entities.AddMap(entity);
-	}
-	private void OnEntityDeath(BaseCombatEntity entity, HitInfo info)
-	{
-		Entities.RemoveMap(entity);
-	}
-	private void OnEntityKill(BaseEntity entity)
-	{
-		Entities.RemoveMap(entity);
 	}
 
 	internal static StackTraceLogType _defaultLogTrace;
