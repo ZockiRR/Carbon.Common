@@ -234,7 +234,7 @@ public static class LUIBuilder
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void Write(this ref LuiBuilderInstance inst, ulong value)
     {
-	    Span<char> tempBuffer = stackalloc char[16];
+	    Span<char> tempBuffer = stackalloc char[20];
 	    int written = WriteUlongDigits(value, tempBuffer);
 	    tempBuffer.Slice(0, written).CopyTo(inst._charBuffer.AsSpan(inst._charIndex));
 	    inst._charIndex += written;
@@ -272,11 +272,13 @@ public static class LUIBuilder
 			value = -value;
 		}
 		int intPart = (int)value;
-		index += WriteIntDigits(intPart, buffer.Slice(index));
-		buffer[index++] = dot;
 		float fractional = value - intPart;
 		long factor = _pow10[precision];
 		long fracAsInt = (long)(fractional * factor + 0.5f);
+		if (fracAsInt == _pow10[precision])
+			intPart++;
+		index += WriteIntDigits(intPart, buffer[index..]);
+		buffer[index++] = dot;
 		int fracStart = index;
 		for (int i = 0; i < precision; i++)
 		{
@@ -314,30 +316,36 @@ public static class LUIBuilder
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	private static int WriteIntDigits(int value, Span<char> buffer)
-	{
-		if (value == 0)
-		{
-			buffer[0] = zero;
-			return 1;
-		}
-		int index = 0;
-		while (value > 0)
-		{
-			buffer[index++] = (char)(zero + (value % 10));
-			value /= 10;
-		}
-		for (int i = 0, j = index - 1; i < j; i++, j--)
-			(buffer[i], buffer[j]) = (buffer[j], buffer[i]);
-		return index;
-	}
+    private static int WriteIntDigits(int value, Span<char> buffer)
+    {
+        if (value == 0)
+        {
+            buffer[0] = zero;
+            return 1;
+        }
+        int index = 0;
+        bool isBelow = value < 0;
+        if (isBelow)
+            value = -value;
+        while (value > 0)
+        {
+            buffer[index++] = (char)(zero + (value % 10));
+            value /= 10;
+        }
+        if (isBelow)
+            buffer[index++] = minus;
+        for (int i = 0, j = index - 1; i < j; i++, j--)
+            (buffer[i], buffer[j]) = (buffer[j], buffer[i]);
+        return index;
+    }
 
 	#endregion
 }
 
 public struct LuiBuilderInstance : IDisposable
 {
-	private LUIBuilder.WriteArray[] _segments = ArrayPool<LUIBuilder.WriteArray>.Shared.Rent(100);
+	private static int _segmentLimit = 100;
+	private LUIBuilder.WriteArray[] _segments = ArrayPool<LUIBuilder.WriteArray>.Shared.Rent(_segmentLimit);
 	private int _segmentCount = 0;
 
 	private const int maxSegmentSize = 4096;
@@ -486,9 +494,9 @@ public struct LuiBuilderInstance : IDisposable
 		                    if (image.imageType != null)
 		                    {
 			                    this.WriteComma();
-			                    this.WriteField("imageType", image.imageType);
+			                    this.WriteField("imagetype", image.imageType);
 		                    }
-		                    if (image.png != 0)
+		                    if (image.png != null)
 		                    {
 			                    this.WriteComma();
 			                    this.WriteField("png", image.png);
@@ -527,7 +535,12 @@ public struct LuiBuilderInstance : IDisposable
 			                    this.WriteComma();
 			                    this.WriteField("url", rawImage.url);
 		                    }
-		                    if (rawImage.steamid != 0)
+		                    if (rawImage.png != null)
+		                    {
+			                    this.WriteComma();
+			                    this.WriteField("png", rawImage.png);
+		                    }
+		                    if (rawImage.steamid != null)
 		                    {
 			                    this.WriteComma();
 			                    this.WriteField("steamid", rawImage.steamid);
@@ -564,7 +577,7 @@ public struct LuiBuilderInstance : IDisposable
 		                    if (button.imageType != null)
 		                    {
 			                    this.WriteComma();
-			                    this.WriteField("imageType", button.imageType);
+			                    this.WriteField("imagetype", button.imageType);
 		                    }
 		                    if (button.normalColor != null)
 		                    {
@@ -689,6 +702,9 @@ public struct LuiBuilderInstance : IDisposable
 			                    this.WriteComma();
 			                    this.WriteField("autofocus", true);
 		                    }
+		                    break;
+	                    case LuiCompType.NeedsCursor:
+		                    found++;
 		                    break;
                         case LuiCompType.RectTransform:
 	                        LuiRectTransformComp rect = component as LuiRectTransformComp;
@@ -836,6 +852,9 @@ public struct LuiBuilderInstance : IDisposable
 			                    this.WriteComma();
 			                    this.WriteField("filter", slot.filter);
 		                    }
+		                    break;
+	                    case LuiCompType.NeedsKeyboard:
+		                    found++;
 		                    break;
 	                    case LuiCompType.ScrollView:
 		                    LuiScrollComp scroll = component as LuiScrollComp;
@@ -1009,6 +1028,15 @@ public struct LuiBuilderInstance : IDisposable
 	    if (_charIndex == 0) return;
 	    byte[] segment = ArrayPool<byte>.Shared.Rent(maxSegmentSize);
 	    int size = Encoding.UTF8.GetBytes(_charBuffer, 0, _charIndex, segment, 0);
+	    if (_segmentCount == _segmentLimit)
+	    {
+		    _segmentLimit *= 2;
+		    var _tempArray = ArrayPool<LUIBuilder.WriteArray>.Shared.Rent(_segmentLimit);
+		    Array.Copy(_segments, _tempArray, _segmentCount);
+		    ArrayPool<LUIBuilder.WriteArray>.Shared.Return(_segments, clearArray: true);
+		    _segments = _tempArray;
+		    _segmentCount = 0;
+	    }
 	    _segments[_segmentCount++] = new LUIBuilder.WriteArray(segment, size);
 	    _charIndex = 0;
     }
@@ -1018,6 +1046,6 @@ public struct LuiBuilderInstance : IDisposable
 	    _charIndex = 0;
 	    for (int i = 0; i < _segmentCount; i++)
 		    ArrayPool<byte>.Shared.Return(_segments[i].values);
-	    ArrayPool<LUIBuilder.WriteArray>.Shared.Return(_segments);
+	    ArrayPool<LUIBuilder.WriteArray>.Shared.Return(_segments, clearArray: true);
     }
 }

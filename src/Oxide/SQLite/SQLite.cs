@@ -1,5 +1,5 @@
 ﻿using System.Data;
-using Microsoft.Data.Sqlite;
+using Mono.Data.Sqlite;
 using Logger = Carbon.Logger;
 
 namespace Oxide.Core.SQLite.Libraries;
